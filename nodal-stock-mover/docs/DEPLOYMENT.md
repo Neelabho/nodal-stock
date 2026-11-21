@@ -75,3 +75,17 @@ marked "Planned" as reliable. See `backend/nodal/policy.py` and `DECISIONS.md`.
 - **Shipments:** the pipeline groups moves into store shipments and writes plain-language summaries with the local model (cached; template fallback). They are published in the bundle, so the public app shows them with no AI at request time.
 - **Ask:** `POST /api/ask`. General questions use Sarvam (`SARVAM_API_KEY`, `SARVAM_MODEL`); the router sends only questions with no store, SKU or plan words, plus a fixed block of public rules. Plan questions are answered locally from shipment facts. Answers are cached in `qa_cache`; limits `QA_PER_MINUTE`, `QA_PER_DAY`, `QA_GLOBAL_PER_DAY` return HTTP 429 with `Retry-After`. On Render set `SARVAM_API_KEY` in the service's environment settings yourself.
 - **Add data:** local app only. `PUT /api/inbox/<table>` validates and stores a CSV; uploaded files overlay the supplied dataset; `POST /api/pipeline/run` recalculates in the background with stage progress. Disabled when `NODAL_MODE=published`.
+
+## Platforms
+NODAL is one responsive web app (a PWA), not three apps. It runs in the browser on iPhone/iPad (Safari), Android (Chrome) and laptops (Chrome, Edge, Safari, Firefox).
+
+| Form factor | Layout | Install |
+|---|---|---|
+| Phone (up to 700 px) | bottom tab bar, one shipment at a time, swipe, sheets | iPhone: Share, then Add to Home Screen (the app shows this hint). Android: browser install prompt or the in-app "Install app" button |
+| Tablet / small laptop (701-1000 px) | compact icon rail, centred cards | same as above |
+| Laptop / desktop | floating glass sidebar, keyboard shortcuts (right arrow approve, left arrow reject, S skip) | Chrome / Edge show an install icon; the in-app "Install app" button appears when the browser offers it |
+
+Details: the Android/iOS back gesture closes a sheet instead of leaving the app; screen-height units use `dvh` so mobile browser bars do not clip the layout; safe-area insets cover notches and landscape; the glass effect carries the `-webkit-` prefix for Safari; reduced-motion settings disable the animations and the intro.
+
+**Tested here:** Chromium engine at laptop (1280 px), tablet (820 px) and phone (about 360 px, Android user agent) sizes: layouts, sheets, back gesture, keyboard shortcuts, no horizontal overflow.
+**Not tested:** a real iPhone or Android phone, Safari, Firefox, installing the app, service-worker/offline behaviour (the embedded test browser blocks service workers). Check these on real devices over the HTTPS URL after deployment.

@@ -44,7 +44,7 @@ async function boot(refresh) {
     S.ship = await api("/api/shipments");
     await loadDec(); await refreshStatus(); gateNav();
     $("#asof").textContent = `Stock as of ${S.ov.manifest.as_of} · plan dispatches ${S.ov.manifest.dispatch_date}`;
-    netBanner(); render();
+    netBanner(); installUI(); render();
   } catch (e) {
     $("#main").innerHTML = `<div class="note"><b>Could not load the plan.</b><br>${esc(e.message)}<br><span class="muted">If you are offline, reconnect and try again. Operators: run <code>python -m nodal.cli daily</code> to publish a plan.</span></div>`;
   }
@@ -183,7 +183,7 @@ function posBlock(title, p) {
 }
 async function openDrawer(id) {
   const d = $("#drawer");
-  d.innerHTML = '<div class="loading">Loading…</div>'; d.classList.add("open"); $("#scrim").classList.add("open"); d.setAttribute("aria-hidden", "false");
+  d.innerHTML = '<div class="loading">Loading…</div>'; showSheet(d);
   let a;
   try { a = await api("/api/actions/" + id); } catch (e) { d.innerHTML = `<div class="note">${esc(e.message)}</div>`; return; }
   const e = a.evidence, rc = e.recipient, dn = e.donor;
@@ -204,10 +204,18 @@ async function openDrawer(id) {
   ${a.flags.length ? `<div>${a.flags.map((x) => `<span class="pill flag">${esc(x.replace(/_/g, " "))}</span>`).join(" ")}</div>` : ""}
   ${aiSection(a.review)}${altCompare(a, a.review)}
   <details style="margin-top:14px"><summary>Raw evidence (JSON)</summary><pre>${esc(JSON.stringify(e, null, 1))}</pre></details>`;
-  $("#dx").onclick = closeDrawer;
+  $("#dx").onclick = () => closeDrawer();
   bindDecisionBar(d, a);
 }
-function closeDrawer() { $("#drawer").classList.remove("open"); $("#scrim").classList.remove("open"); $("#drawer").setAttribute("aria-hidden", "true"); }
+function showSheet(d) {
+  d.classList.add("open"); $("#scrim").classList.add("open"); d.setAttribute("aria-hidden", "false");
+  if (!S.sheetPushed) { S.sheetPushed = true; try { history.pushState({ sheet: 1 }, ""); } catch { /* */ } }     // the Android/iOS back gesture closes the sheet instead of leaving the app
+}
+function closeDrawer(fromPop) {
+  $("#drawer").classList.remove("open"); $("#scrim").classList.remove("open"); $("#drawer").setAttribute("aria-hidden", "true");
+  if (fromPop !== true && S.sheetPushed) { S.sheetPushed = false; try { history.back(); } catch { /* */ } } else S.sheetPushed = false;
+}
+window.addEventListener("popstate", () => { if ($("#drawer").classList.contains("open")) closeDrawer(true); });
 
 /* ------------------------------------------------------------ data quality */
 async function vQuality() {
@@ -269,7 +277,7 @@ document.querySelectorAll("[data-tab]").forEach((b) => b.addEventListener("click
 document.querySelector("[data-more]").addEventListener("click", openMore);
 MQ.addEventListener("change", () => { if (S.ov) render(); });
 $("#main").addEventListener("click", onMainClick);
-$("#scrim").addEventListener("click", closeDrawer);
+$("#scrim").addEventListener("click", () => closeDrawer());
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDrawer(); onKey(e); });
 
 /* ------------------------------------------------------------ hotspot map */
@@ -532,10 +540,31 @@ function openMore() {
   d.innerHTML = `<button class="btn x" id="dx">${ico("x")}<span>Close</span></button><h2 style="margin:0 0 .6rem">More</h2>
     ${S.cap && S.cap.can_upload ? row("upload-cloud", "Add data", "data") : ""}${row("sparkles", "AI review", "ai")}${row("calendar-clock", "Daily runs", "runs")}${row("history", "History", "history")}
     ${row("shield-check", "Rules and gaps", "safety")}${row("database", "Data quality", "quality")}${row("line-chart", "Forecast", "model")}${row("info", "How it works", "method")}
-    <a class="sheet-row" href="/api/export.csv">${ico("download")}<span>Export all moves</span></a>`;
-  d.classList.add("open"); $("#scrim").classList.add("open"); d.setAttribute("aria-hidden", "false");
-  $("#dx").onclick = closeDrawer;
-  d.querySelectorAll("[data-m]").forEach((b) => b.addEventListener("click", () => { closeDrawer(); setTab(b.dataset.m); }));
+    <a class="sheet-row" href="/api/export.csv">${ico("download")}<span>Export all moves</span></a>${installRow()}`;
+  showSheet(d);
+  $("#dx").onclick = () => closeDrawer();
+  d.querySelectorAll("[data-m]").forEach((b) => b.addEventListener("click", async () => { if (b.dataset.m === "__install") { closeDrawer(); _installEvt.prompt(); await _installEvt.userChoice; _installEvt = null; installUI(); return; } closeDrawer(); setTab(b.dataset.m); }));
+}
+
+/* ------------------------------------------------------------ PWA install (Android / desktop Chrome and Edge prompt; iOS needs Share > Add to Home Screen) */
+const isStandalone = () => matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+let _installEvt = null;
+window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); _installEvt = e; installUI(); });
+window.addEventListener("appinstalled", () => { _installEvt = null; installUI(); toast("NODAL is installed."); });
+function installUI() {
+  const f = $("#asof"); if (!f) return;
+  let b = $("#install-btn");
+  if (isStandalone()) { b && b.remove(); return; }
+  if (_installEvt) {
+    if (!b) { b = document.createElement("button"); b.id = "install-btn"; b.className = "btn"; b.type = "button"; b.innerHTML = ico("download") + "<span>Install app</span>"; b.onclick = async () => { _installEvt.prompt(); await _installEvt.userChoice; _installEvt = null; installUI(); }; f.after(b); }
+  } else if (isIOS() && !b) { const n = document.createElement("div"); n.id = "install-btn"; n.className = "install-note"; n.textContent = "To install on iPhone or iPad: tap Share, then Add to Home Screen."; f.after(n); }
+}
+function installRow() {
+  if (isStandalone()) return "";
+  if (_installEvt) return `<button class="sheet-row" data-m="__install">${ico("download")}<span>Install app</span></button>`;
+  if (isIOS()) return `<p class="install-note">Install on iPhone or iPad: tap Share, then Add to Home Screen.</p>`;
+  return "";
 }
 
 /* ------------------------------------------------------------ PWA */
@@ -658,8 +687,8 @@ async function openRoutine() {
     ${big ? `<div class="note">${big} items are above the ₹1,00,000 sign-off limit. Approving confirms them too.</div>` : ""}
     <div class="mc-actions" style="justify-content:center"><button id="rt-go" class="go">${ico("check")}Approve all ${r.length}</button></div>
     <p class="muted" style="font-size:.78rem">Approving records approval of the plan only. No stock is dispatched.</p>`;
-  d.classList.add("open"); $("#scrim").classList.add("open"); d.setAttribute("aria-hidden", "false");
-  $("#dx").onclick = closeDrawer;
+  showSheet(d);
+  $("#dx").onclick = () => closeDrawer();
   $("#rt-go").onclick = async () => {
     try {
       const res = await fetch("/api/decisions/routine", { method: "POST", headers: { "Content-Type": "application/json", "X-Client-Id": clientId() }, body: JSON.stringify({ confirm_high_value: true }) });
@@ -670,7 +699,7 @@ async function openRoutine() {
 }
 async function openShipment(id) {
   const d = $("#drawer");
-  d.innerHTML = '<div class="loading">Loading…</div>'; d.classList.add("open"); $("#scrim").classList.add("open"); d.setAttribute("aria-hidden", "false");
+  d.innerHTML = '<div class="loading">Loading…</div>'; showSheet(d);
   let s; try { s = await api("/api/shipments/" + encodeURIComponent(id)); } catch (e) { d.innerHTML = `<div class="note">${esc(e.message)}</div>`; return; }
   const lines = s.moves.map((m, i) => `<div class="qrow" style="--i:${Math.min(i, 8)}" data-move="${esc(m.id)}" tabindex="0" role="button"><div class="qm"><b>${m.qty} × ${esc(m.sku_id)}</b><span>${esc(m.style_name)} · size ${esc(m.size)} · from ${esc(m.source)} · arrives ${esc(m.arrival_date.slice(5))}</span></div><div>${aiChip(m)}${m.requires_approval ? ' <span class="pill warn">big</span>' : ""}</div></div>`);
   d.innerHTML = `<button class="btn x" id="dx">${ico("x")}<span>Close</span></button>
@@ -682,7 +711,7 @@ async function openShipment(id) {
       <p class="muted" style="font-size:.76rem;margin:.6rem 0 0">Approving records approval of the plan only. No stock is dispatched.${s.needs_signoff ? " Items above the sign-off limit are confirmed together." : ""}</p></div>
     <h3>What is inside</h3><div class="queue" id="ship-lines">${lines.slice(0, 10).join("")}</div>
     ${lines.length > 10 ? `<p><button class="link" id="ship-more">Show all ${lines.length} items</button></p>` : ""}`;
-  $("#dx").onclick = closeDrawer;
+  $("#dx").onclick = () => closeDrawer();
   d.querySelectorAll("[data-sd]").forEach((b) => b.addEventListener("click", () => decideShip(id, b.dataset.sd)));
   const bind = () => d.querySelectorAll("[data-move]").forEach((r) => { r.onclick = () => openDrawer(r.dataset.move); });
   bind();

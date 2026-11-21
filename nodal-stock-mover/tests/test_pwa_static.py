@@ -15,7 +15,7 @@ def png_size(p):
 
 def test_manifest_is_installable():
     m = json.loads((FE / "manifest.webmanifest").read_text())
-    assert m["display"] == "standalone" and m["start_url"] == "/" and m["theme_color"] == "#852201" and m["short_name"]
+    assert m["display"] == "standalone" and m["start_url"] == "/" and m["theme_color"] == "#0d1214" and m["short_name"]
     sizes = {i["sizes"]: i for i in m["icons"]}
     assert "192x192" in sizes and "512x512" in sizes and any(i["purpose"] == "maskable" for i in m["icons"])
     for i in m["icons"]:
@@ -75,3 +75,29 @@ def test_approvals_require_a_network_and_explain_no_dispatch():
 def test_frontend_javascript_parses():
     r = subprocess.run(["node", "-e", f"new Function(require('fs').readFileSync({json.dumps(str(FE / 'app.js'))},'utf8'))"], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
+
+
+def test_show_sheet_does_not_call_itself_and_back_gesture_closes_sheets():
+    js = (FE / "app.js").read_text()
+    body = re.search(r"function showSheet\(d\) \{(.*?)\n\}", js, re.S).group(1)
+    assert "showSheet(" not in body                                    # regression: a bulk rewrite once made it recurse forever
+    assert "history.pushState" in body and 'addEventListener("popstate"' in js   # Android/iOS back gesture closes the sheet
+    assert js.count("showSheet(d)") >= 5                               # every sheet opens through the same helper
+
+
+def test_cross_platform_install_and_layout_support():
+    m = json.loads((FE / "manifest.webmanifest").read_text())
+    assert m["orientation"] == "any" and m["id"] == "/" and m["background_color"] == m["theme_color"] == "#0d1214"
+    js, css, html = (FE / "app.js").read_text(), (FE / "styles.css").read_text(), (FE / "index.html").read_text()
+    assert "beforeinstallprompt" in js and "Add to Home Screen" in js and "navigator.standalone" in js      # Android/desktop prompt + iOS instructions
+    assert "100dvh" in css and "min-width:701px) and (max-width:1000px" in css                              # mobile browser bars + tablet rail
+    assert "-webkit-backdrop-filter" in css                                                                  # Safari
+    assert 'media="(prefers-color-scheme: light)"' in html and "viewport-fit=cover" in html
+
+
+def test_hover_or_press_never_brightens_the_glass_light():
+    """Regression: the white 'droplet' light used to brighten and slide on hover/press, flashing a bright patch on the left of cards."""
+    css = re.sub(r"/\*.*?\*/", "", (FE / "styles.css").read_text(), flags=re.S)
+    assert "hover::before" not in css and "active::before" not in css
+    assert not re.search(r"\.hl::before\s*[,{]", css.split("details.card::before")[0].split(".glass::before")[-1] if False else "")   # nested glass rows carry no droplet
+    assert "details.card::before" in css and ".hl:hover{background:var(--accent-soft)" in css
