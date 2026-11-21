@@ -133,3 +133,19 @@ def test_validator_catches_tampered_plan(result, data):
     res = validate(data, vel, [bad_protected, bad_oversell], seas)
     rules = {v["rule"] for v in res["violations"]}
     assert "protected" in rules and "supply" in rules and "capacity" in rules
+
+
+def test_optimizer_not_worse_than_greedy_and_rules_hold(result):
+    o = result["manifest"]["optimizer"]
+    assert o and o["uplift_pct"] >= 0 and "Optimal" in o["lp"]["status"]
+
+
+def test_map_api_returns_stores_and_moves():
+    from fastapi.testclient import TestClient
+    from nodal.api import app
+    c = TestClient(app)
+    prods = c.get("/api/map/products").json()
+    assert prods["categories"] and prods["styles"]
+    m = c.get("/api/map", params={"style": prods["styles"][0]["style"]}).json()
+    assert len(m["stores"]) > 10 and all(-90 < s["lat"] < 90 for s in m["stores"])
+    assert c.get("/api/map").status_code == 422
