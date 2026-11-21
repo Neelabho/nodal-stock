@@ -7,6 +7,14 @@ NODAL finds stock that is in the wrong place and produces a ready-to-approve dai
 deterministic, rule-checked by an independent validator, and explained in one line with the evidence behind it.
 No LLM is involved in any quantity.
 
+## Try it live
+
+**https://nodal-e5m1.onrender.com** — no sign-in. Open it on a phone or laptop, or scan:
+
+<img src="nodal-stock-mover/docs/qr.png" alt="QR code for https://nodal-e5m1.onrender.com" width="180">
+
+On a phone, use *Share → Add to Home Screen* (iOS) or *Install app* (Android/desktop) to install it. The free host sleeps when idle, so the first load can take about a minute. Approving a plan records the decision only; no stock is dispatched.
+
 ## Run it
 
 Requires Python 3.11+ (3.12 in the public image). The supplied Manyavar data pack is included unmodified under `manyavar-vch3-data/`
@@ -22,7 +30,7 @@ cd backend && ../.venv/bin/python -m nodal.cli   # headless: writes data/actions
 
 ## v2: AI review, daily automation, public phone app
 
-- **Qwen3 8B (local Ollama)** reviews the highest-priority moves and compares validated alternatives. It is advisory: its numbers and evidence are machine-checked and nothing it says changes a quantity or rule.
+- **Sarvam AI** reviews the highest-priority moves, writes plain-language summaries and answers questions in the Ask tab. It is advisory: its numbers and evidence are machine-checked and nothing it says changes a quantity or rule. (A local Ollama model is an opt-in alternative, off by default.)
 - **Daily pipeline** (`python -m nodal.cli daily | schedule | watch`): ingest, hash, snapshot, forecast, allocate, validate, review, publish.
 - **Server-side approvals** with an append-only audit trail (SQLite locally, PostgreSQL in production).
 - **Installable phone app** (PWA) that judges open from a QR code, no sign-in. Approving a plan never dispatches stock.
