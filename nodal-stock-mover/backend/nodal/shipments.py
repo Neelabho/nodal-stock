@@ -102,7 +102,7 @@ def _grounded(text: str, facts: dict) -> bool:
 
 def summarise(shipments: list[dict], client=None) -> dict:
     """Fill sh['summary'] and sh['summary_source']. Returns counts. Never raises."""
-    stats = {"cached": 0, "local_ai": 0, "template": 0}
+    stats = {"cached": 0, "local_ai": 0, "sarvam": 0, "template": 0}
     available = False
     if client is not None:
         try:
@@ -117,7 +117,7 @@ def summarise(shipments: list[dict], client=None) -> dict:
         key = hashlib.sha256(f"{VERSION}|{model}|{fj}".encode()).hexdigest()
         hit = db.get_text(key) if client is not None else None
         if hit:
-            sh["summary"], sh["summary_source"] = hit, "local_ai"; stats["cached"] += 1
+            sh["summary"], sh["summary_source"] = hit, ("sarvam" if str(model).startswith("sarvam") else "local_ai"); stats["cached"] += 1
             continue
         text = None
         if available:
@@ -133,7 +133,8 @@ def summarise(shipments: list[dict], client=None) -> dict:
                     break
         if text:
             db.put_text(key, "shipment", text, model)
-            sh["summary"], sh["summary_source"] = text, "local_ai"; stats["local_ai"] += 1
+            src = getattr(client, "last_source", "local_ai")
+            sh["summary"], sh["summary_source"] = text, src; stats[src] = stats.get(src, 0) + 1
         else:
             sh["summary"], sh["summary_source"] = template_summary(sh), "template"; stats["template"] += 1
     return stats

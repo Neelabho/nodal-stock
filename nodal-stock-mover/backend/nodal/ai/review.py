@@ -7,6 +7,7 @@ Its verdict is stored separately from (and never changes) the deterministic vali
 from __future__ import annotations
 import hashlib, json, logging, os, re
 from .ollama import OllamaClient, OllamaError
+from .provider import AIProvider
 from .schemas import AIReview, REVIEW_SCHEMA
 from .. import db
 
@@ -161,9 +162,9 @@ def evidence_hash(facts_json: str, model: str) -> str:
     return hashlib.sha256(f"{PROMPT_VERSION}|{model}|{facts_json}".encode()).hexdigest()
 
 
-def review_run(run_id: str, actions: list[dict], evidence_by_id: dict, cand_map: dict, policy: dict, client: OllamaClient | None = None, limit: int | None = None) -> dict:
+def review_run(run_id: str, actions: list[dict], evidence_by_id: dict, cand_map: dict, policy: dict, client: "AIProvider | OllamaClient | None" = None, limit: int | None = None) -> dict:
     """Review the highest-priority moves one by one (single local GPU), caching by evidence hash. Safe to re-run."""
-    client = client or OllamaClient()
+    client = client or AIProvider()
     limit = int(limit if limit is not None else os.environ.get("AI_REVIEW_LIMIT", 60))
     chosen = prioritise(actions, cand_map, limit)
     chosen_ids = {a["id"] for a in chosen}

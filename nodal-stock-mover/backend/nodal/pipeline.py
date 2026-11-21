@@ -199,8 +199,8 @@ def daily(force=False, with_ai=True, kind="daily", dataset: Path | None = None, 
             sh = shp.build(res["actions"], res["stores"], res["manifest"]["seasonality"], rv, d.warehouse_id)
             client = None
             if with_ai:
-                from .ai.ollama import OllamaClient
-                client = OllamaClient()
+                from .ai.provider import AIProvider
+                client = AIProvider()
             return sh, shp.summarise(sh, client)
         ships, ship_stats = st.run("simple_summaries", _ships, retries=0)
         bundle = st.run("publish", lambda: publish(run_id, res, reviews, cand, ih, src_label, st.s, ships))

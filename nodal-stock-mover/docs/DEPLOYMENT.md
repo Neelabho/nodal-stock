@@ -89,3 +89,6 @@ Details: the Android/iOS back gesture closes a sheet instead of leaving the app;
 
 **Tested here:** Chromium engine at laptop (1280 px), tablet (820 px) and phone (about 360 px, Android user agent) sizes: layouts, sheets, back gesture, keyboard shortcuts, no horizontal overflow.
 **Not tested:** a real iPhone or Android phone, Safari, Firefox, installing the app, service-worker/offline behaviour (the embedded test browser blocks service workers). Check these on real devices over the HTTPS URL after deployment.
+
+## AI fallback (local first, then Sarvam)
+`nodal/ai/provider.py`: every AI feature tries local Qwen3 first. If Ollama is down, not installed, or fails a call, Sarvam answers with the same prompt, and its output passes the same checks (schema, numbers must come from NODAL's facts, evidence references, alternatives must be validated candidates). The source is stored and shown ("Written by Sarvam AI"). If neither is available the plan still completes with standard wording and reviews stay `pending`. **Privacy:** in fallback, the prompt (store, product and number facts) is sent to Sarvam. Set `AI_REMOTE_FALLBACK=0` to prevent this. On a public host with no Ollama, plan questions therefore use Sarvam unless you turn it off.

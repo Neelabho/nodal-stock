@@ -53,8 +53,11 @@ class SarvamClient:
         return bool(self.key)
 
     def ask(self, question: str, facts: str) -> str:
-        body = {"model": self.model, "temperature": 0.2, "max_tokens": 350,
-                "messages": [{"role": "system", "content": facts + " Answer in at most four plain sentences."}, {"role": "user", "content": question}]}
+        return self.chat(facts + " Answer in at most four plain sentences.", question, max_tokens=350, temperature=0.2)
+
+    def chat(self, system: str, user: str, max_tokens: int = 400, temperature: float = 0.1) -> str:
+        body = {"model": self.model, "temperature": temperature, "max_tokens": max_tokens,
+                "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
         last = None
         for attempt in (1, 2):
             try:
@@ -103,7 +106,7 @@ def plan_answer(question: str, shipments: list[dict], status: dict, local_client
                 from .shipments import _grounded
                 t = str(raw.get("answer", "")).strip()
                 if t and _grounded(t, {"facts": facts, "q": question}):
-                    return t, "local_ai"
+                    return t, getattr(local_client, "last_source", "local_ai")
         except Exception as e:  # noqa: BLE001
             log.warning("local answer failed: %s", type(e).__name__)
     return det, "plan"

@@ -359,10 +359,8 @@ def ask(body: AskIn, request: Request, x_client_id: str | None = Header(default=
     s = _state["r"]["summary"]
     status = {"shipments": len(ships), "units": s["total"]["units"], "needs_signoff": s["needs_approval"], "approved": sum(1 for d in dec.values() if d["decision"] != "rejected"),
               "awaiting": s["total"]["actions"] - len(dec)}
-    local = None
-    if MODE != "published":
-        from .ai.ollama import OllamaClient
-        local = OllamaClient()
+    from .ai.provider import AIProvider
+    local = AIProvider()                                   # local model first; Sarvam if it is unavailable (AI_REMOTE_FALLBACK=0 turns that off)
     try:
         return qa.answer(body.question, cid, _state["run_id"], _state["r"]["manifest"]["policy"], ships, status, local_client=local)
     except qa.RateLimited as e:
