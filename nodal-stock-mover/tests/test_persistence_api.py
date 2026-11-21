@@ -10,8 +10,13 @@ BUNDLE = Path(__file__).resolve().parents[1] / "published" / "latest.json.gz"
 
 @pytest.fixture()
 def fresh(monkeypatch, tmp_path):
-    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/t.db")
+    """SQLite by default; set NODAL_TEST_DATABASE_URL to run the same tests against PostgreSQL."""
+    url = os.environ.get("NODAL_TEST_DATABASE_URL") or f"sqlite:///{tmp_path}/t.db"
+    monkeypatch.setenv("DATABASE_URL", url)
     db.reset_engine()
+    if not url.startswith("sqlite"):
+        db.meta.drop_all(db.engine())
+        db.reset_engine()
     yield tmp_path
     db.reset_engine()
 
@@ -47,7 +52,8 @@ def test_concurrent_identical_decisions_write_one_row(fresh):
     [t.start() for t in ts]; [t.join() for t in ts]
     assert not errs
     rows = [x for x in db.decision_log("r1") if x["decision"] == "approved"]
-    assert 1 <= len(rows) <= 8 and db.current_decisions("r1")["M1"]["decision"] == "approved"
+    assert len(rows) == 1                                           # exactly one approval row, never duplicated
+    assert db.current_decisions("r1")["M1"]["decision"] == "approved"
 
 
 def test_database_failure_is_reported_not_crashing(monkeypatch, tmp_path):

@@ -11,13 +11,13 @@ from .schemas import AIReview, REVIEW_SCHEMA
 from .. import db
 
 log = logging.getLogger("nodal.ai")
-PROMPT_VERSION = "v1"
+PROMPT_VERSION = "v2"
 
 SYSTEM = ("You review stock-movement proposals for a menswear retailer's inventory manager. Use ONLY the JSON facts and candidates you are given. "
           "Never invent or estimate numbers, stock levels, forecasts or rules; if you quote a number it must appear in the facts exactly. "
           "The proposal has already passed all hard business rules; judge whether it is sensible and say so plainly. "
           "Outcomes: CONFIRM (reasonable), FLAG (a concern or inconsistency), ALTERNATIVE (one provided candidate is better; set preferred_candidate to its id), "
-          "INSUFFICIENT_EVIDENCE (facts are not enough). If there are no candidates you may not answer ALTERNATIVE. Keep every field short. "
+          "INSUFFICIENT_EVIDENCE (facts are not enough). If there are no candidates you may not answer ALTERNATIVE; when you do answer ALTERNATIVE you MUST set preferred_candidate to the exact id (for example ALT-1). Keep every field short. "
           "The minimum-cover rule applies only to a store that GIVES stock away, never to a receiving store or a warehouse dispatch. "
           "evidence_refs is mandatory: list 2-5 exact keys from `facts` that justify your outcome.")
 
@@ -135,6 +135,10 @@ def review_one(client: OllamaClient, a: dict, evidence: dict, cands: list[dict],
     except Exception as e:  # noqa: BLE001  (pydantic ValidationError etc.)
         return {"state": "failed", "error": f"malformed response: {type(e).__name__}"}
     outcome, note, alt = rv.outcome, None, None
+    if outcome == "ALTERNATIVE" and not rv.preferred_candidate:
+        named = set(re.findall(r"ALT-\d+", " ".join([rv.plain_explanation, rv.reasoning])))
+        if len(named) == 1:                                   # the model named exactly one candidate in prose but left the field empty
+            rv.preferred_candidate = named.pop()
     if outcome == "ALTERNATIVE":
         c = cand_ids.get(rv.preferred_candidate or "")
         if not c:

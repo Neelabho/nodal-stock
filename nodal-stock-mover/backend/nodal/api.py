@@ -38,7 +38,7 @@ def _load(refresh=False) -> dict:
                 raise HTTPException(503, detail="No published run found. Run `python -m nodal.cli daily` and commit published/latest.json.gz.")
             else:
                 from .engine import run                      # heavy imports only when computing
-                from .loader import DataError
+                from .required import DataError
                 try:
                     r = run(str(DATA_DIR))
                 except DataError as e:
@@ -197,7 +197,8 @@ def ai_overview():
     for x in rows:
         outcomes[x["outcome"] or x["state"]] = outcomes.get(x["outcome"] or x["state"], 0) + 1
     cands = sum(len((x["review"] or {}).get("candidates_considered", [])) for x in rows)
-    return {"states": states, "outcomes": outcomes, "candidates_evaluated": cands, "reviews": rows,
+    better = sum(1 for x in rows for c in (x["review"] or {}).get("candidates_considered", []) if c["delta_expected_revenue"] > 0)
+    return {"states": states, "outcomes": outcomes, "candidates_evaluated": cands, "better_by_calculation": better, "reviews": rows,
             "note": "AI conclusions are advisory and kept separate from the deterministic validator. Model-stated confidence is not a calibrated probability."}
 
 
@@ -326,7 +327,7 @@ def _admin(token: str | None):
 async def upload(name: str, request: Request, x_admin_token: str | None = Header(default=None)):
     """Method 2: operator uploads one dataset CSV (e.g. stock_snapshot.csv) into the inbox."""
     _admin(x_admin_token)
-    from .loader import REQUIRED
+    from .required import REQUIRED
     base = name[:-4] if name.endswith(".csv") else name
     if base not in REQUIRED and base not in ("rules_extra",):
         raise HTTPException(422, f"unknown dataset '{base}'; expected one of {sorted(REQUIRED)}")
@@ -349,7 +350,15 @@ def admin_run(force: bool = False, x_admin_token: str | None = Header(default=No
 
 
 # ---------------------------------------------------------------- PWA + static
-app.mount("/static", StaticFiles(directory=FRONTEND), name="static")
+class NoCacheStatic(StaticFiles):
+    """Always revalidate (ETag): a new deploy is never masked by a stale cached stylesheet or script."""
+    async def get_response(self, path, scope):
+        resp = await super().get_response(path, scope)
+        resp.headers["Cache-Control"] = "no-cache"
+        return resp
+
+
+app.mount("/static", NoCacheStatic(directory=FRONTEND), name="static")
 
 
 @app.get("/manifest.webmanifest")

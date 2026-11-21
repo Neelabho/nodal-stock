@@ -8,7 +8,7 @@ import datetime as dt, gzip, hashlib, json, logging, os, shutil, time, uuid
 from pathlib import Path
 
 from . import db
-from .loader import REQUIRED, DataError, load_all
+from .required import REQUIRED, DataError
 
 log = logging.getLogger("nodal.pipeline")
 ROOT = Path(__file__).resolve().parents[3]
@@ -121,6 +121,7 @@ def daily(force=False, with_ai=True, kind="daily", dataset: Path | None = None, 
     db.create_run(run_id, kind, None, ih)
     st = Stages(run_id)
     try:
+        from .loader import load_all
         d = st.run("ingest_validate", lambda: load_all(src_dir))
         db.update_run(run_id, as_of=str(d.as_of.date()))
 

@@ -12,3 +12,7 @@
 | 8 | Independent validator re-derives post-plan state from source tables; violating actions are excluded, not warned. | Brief: "we check that no rule is broken". |
 | 9 | Contradictory data (negative stock) is excluded from all actions, not repaired. | Never silently produce a confident action from bad data. |
 | 10 | Repo contains the application, docs, tests and the unmodified organiser data pack (builder's call); the personal operator kit is git-ignored. | Judges can clone and run with no extra setup; data belongs to Vedant Fashions. |
+| 11 | v2: Qwen3 8B (local Ollama) is advisory only. Facts, candidates and rules come from deterministic code; the model's numbers and evidence references are machine-checked; alternatives are re-validated. | Keeps inventory safety deterministic and auditable. |
+| 12 | Public app serves a precomputed run bundle (`published/latest.json.gz`) and stores decisions in PostgreSQL; AI reviews are computed on the operator machine. | Small hosts cannot run an 8B model; the operator Mac need not stay on during judging. |
+| 13 | Judges use the app with no login. Actions are recorded with an anonymous per-browser id; admin endpoints (upload/run) require `NODAL_ADMIN_TOKEN` and are disabled otherwise. | Builder's decision (no sign-in). Roles and user accounts were not built. |
+| 14 | Decisions are an append-only log; identical repeat approvals are not written; moves above the sign-off limit need explicit confirmation. | Audit trail and no duplicate approvals. |

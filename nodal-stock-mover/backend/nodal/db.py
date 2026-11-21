@@ -168,14 +168,22 @@ def current_decisions(run_id: str) -> dict:
     return cur
 
 
+_write_lock = threading.Lock()
+
+
 def record_decision(run_id: str, move_id: str, decision: str, actor: str, reason: str | None = None, original=None, ai_alternative=None, confirmed=False) -> dict:
-    """Append a decision. If the move already has this identical current decision, nothing is written (no duplicate approvals)."""
-    cur = current_decisions(run_id).get(move_id)
-    if cur and cur["decision"] == decision and decision != "cleared":
-        return {"written": False, "current": cur}
-    if not cur and decision == "cleared":
-        return {"written": False, "current": None}
-    with engine().begin() as c:
+    """Append a decision atomically. If the move already has this identical current decision nothing is written (no duplicate approvals),
+    even under concurrent requests: one in-process lock plus a PostgreSQL advisory lock per move for multi-process deployments."""
+    with _write_lock, engine().begin() as c:
+        if c.dialect.name == "postgresql":
+            c.execute(sa.text("select pg_advisory_xact_lock(hashtext(:k))"), {"k": f"{run_id}|{move_id}"})
+        last = c.execute(sa.select(decisions.c.decision, decisions.c.actor, decisions.c.ts, decisions.c.reason).where(decisions.c.run_id == run_id, decisions.c.move_id == move_id)
+                         .order_by(decisions.c.id.desc()).limit(1)).mappings().first()
+        cur = dict(last) if last and last["decision"] != "cleared" else None
+        if cur and cur["decision"] == decision and decision != "cleared":
+            return {"written": False, "current": cur}
+        if not cur and decision == "cleared":
+            return {"written": False, "current": None}
         c.execute(sa.insert(decisions).values(ts=now(), run_id=run_id, move_id=move_id, decision=decision, actor=actor, reason=reason, original=original,
                                               ai_alternative=ai_alternative, confirmed_high_value=bool(confirmed)))
     return {"written": True, "current": current_decisions(run_id).get(move_id)}
