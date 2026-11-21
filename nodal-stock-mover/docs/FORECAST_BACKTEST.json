@@ -1,0 +1,971 @@
+{
+ "generated_at": "2026-11-21T06:52:36+00:00",
+ "source_hash": "005df9366011b608",
+ "method": "rolling origin; model trained only on windows that ended before each test origin; metrics on pairs that sold in the prior 52 weeks; config tuned on earlier validation origins only",
+ "horizon_weeks": 4,
+ "n_pairs": 5235,
+ "n_weeks": 105,
+ "features": 52,
+ "validation_origins": [
+  "2025-08-09",
+  "2025-10-04",
+  "2025-11-29",
+  "2026-01-24",
+  "2026-03-21"
+ ],
+ "tuning": [
+  {
+   "params": {
+    "learning_rate": 0.05,
+    "max_iter": 400,
+    "max_leaf_nodes": 24,
+    "min_samples_leaf": 80,
+    "l2_regularization": 1.0,
+    "max_features": 0.8
+   },
+   "val_poisson_dev": 1.418782737323988,
+   "seconds": 17.1
+  },
+  {
+   "params": {
+    "learning_rate": 0.03,
+    "max_iter": 600,
+    "max_leaf_nodes": 24,
+    "min_samples_leaf": 80,
+    "l2_regularization": 1.0,
+    "max_features": 0.8
+   },
+   "val_poisson_dev": 1.415051663455846,
+   "seconds": 24.6
+  },
+  {
+   "params": {
+    "learning_rate": 0.05,
+    "max_iter": 400,
+    "max_leaf_nodes": 48,
+    "min_samples_leaf": 50,
+    "l2_regularization": 1.0,
+    "max_features": 0.8
+   },
+   "val_poisson_dev": 1.4380971292015532,
+   "seconds": 24.2
+  },
+  {
+   "params": {
+    "learning_rate": 0.05,
+    "max_iter": 400,
+    "max_leaf_nodes": 32,
+    "min_samples_leaf": 80,
+    "l2_regularization": 5.0,
+    "max_features": 0.8
+   },
+   "val_poisson_dev": 1.421647302781992,
+   "seconds": 20.3
+  },
+  {
+   "params": {
+    "learning_rate": 0.05,
+    "max_iter": 400,
+    "max_leaf_nodes": 16,
+    "min_samples_leaf": 150,
+    "l2_regularization": 1.0,
+    "max_features": 0.8
+   },
+   "val_poisson_dev": 1.419546116811237,
+   "seconds": 16.4
+  }
+ ],
+ "config": {
+  "params": {
+   "learning_rate": 0.03,
+   "max_iter": 600,
+   "max_leaf_nodes": 24,
+   "min_samples_leaf": 80,
+   "l2_regularization": 1.0,
+   "max_features": 0.8
+  },
+  "blend_w": 1.0,
+  "scale": 1.0,
+  "alpha": 0.25572402893367063,
+  "considered_not_used": {
+   "blend_w_on_validation": 1.0,
+   "scale_on_validation": 1.2
+  }
+ },
+ "blend_curve": [
+  {
+   "w": 0.0,
+   "dev": 1.97933269793968
+  },
+  {
+   "w": 0.1,
+   "dev": 1.7354594357162378
+  },
+  {
+   "w": 0.2,
+   "dev": 1.6645974027525403
+  },
+  {
+   "w": 0.30000000000000004,
+   "dev": 1.6074712235375828
+  },
+  {
+   "w": 0.4,
+   "dev": 1.5593252292090847
+  },
+  {
+   "w": 0.5,
+   "dev": 1.5183809735254186
+  },
+  {
+   "w": 0.6000000000000001,
+   "dev": 1.4838098483204296
+  },
+  {
+   "w": 0.7000000000000001,
+   "dev": 1.4552497031104357
+  },
+  {
+   "w": 0.8,
+   "dev": 1.4326507676974785
+  },
+  {
+   "w": 0.9,
+   "dev": 1.416253140731507
+  },
+  {
+   "w": 1.0,
+   "dev": 1.4067078579123482
+  }
+ ],
+ "origins": [
+  {
+   "origin_week_end": "2026-05-16",
+   "target_window": [
+    "2026-05-17",
+    "2026-06-13"
+   ],
+   "actual_units": 4636.0,
+   "models": {
+    "ml_poisson_gbm": {
+     "active_pairs": {
+      "wape": 0.5510381939938132,
+      "mae": 0.6327803344640995,
+      "bias": 1.0636342324916772,
+      "poisson_dev": 0.7576589060881691,
+      "n": 4011
+     },
+     "all_pairs": {
+      "wape": 0.5748049037350142,
+      "mae": 0.5090344859055447,
+      "bias": 1.0791275246268432,
+      "poisson_dev": 0.6400199357489589,
+      "n": 5235
+     },
+     "store_category_wape": 0.16094689610616475,
+     "sku_total_wape": 0.1991740136021493,
+     "store_total_wape": 0.11707890552623132,
+     "pi90_coverage": 0.9917726252804787,
+     "pi80_coverage": 0.9755671902268761,
+     "pi90_mean_width": 3.1598105210670657
+    },
+    "ml_only_uncalibrated": {
+     "active_pairs": {
+      "wape": 0.5510381939938132,
+      "mae": 0.6327803344640995,
+      "bias": 1.0636342324916772,
+      "poisson_dev": 0.7576589060881691,
+      "n": 4011
+     },
+     "all_pairs": {
+      "wape": 0.5748049037350142,
+      "mae": 0.5090344859055447,
+      "bias": 1.0791275246268432,
+      "poisson_dev": 0.6400199357489589,
+      "n": 5235
+     },
+     "store_category_wape": 0.16094689610616475,
+     "sku_total_wape": 0.1991740136021493,
+     "store_total_wape": 0.11707890552623132
+    },
+    "current_trailing_rate": {
+     "active_pairs": {
+      "wape": 0.9460124475322045,
+      "mae": 1.0863458821574006,
+      "bias": 1.7287595889419598,
+      "poisson_dev": 2.195176426335105,
+      "n": 4011
+     },
+     "all_pairs": {
+      "wape": 0.946361806154731,
+      "mae": 0.8380770455269022,
+      "bias": 1.7175726200747772,
+      "poisson_dev": 1.9079748989965408,
+      "n": 5235
+     },
+     "store_category_wape": 0.731364886380084,
+     "sku_total_wape": 0.7475756259950789,
+     "store_total_wape": 0.7287595889419601
+    },
+    "peer_smoothed": {
+     "active_pairs": {
+      "wape": 0.9413281078934574,
+      "mae": 1.0809666579300088,
+      "bias": 1.7442132335749359,
+      "poisson_dev": 1.3533706447788079,
+      "n": 4011
+     },
+     "all_pairs": {
+      "wape": 0.9517060831987494,
+      "mae": 0.8428098188556642,
+      "bias": 1.74346290273814,
+      "poisson_dev": 1.1844836900175422,
+      "n": 5235
+     },
+     "store_category_wape": 0.7452709397998154,
+     "sku_total_wape": 0.7636861618624537,
+     "store_total_wape": 0.744213233574936
+    }
+   }
+  },
+  {
+   "origin_week_end": "2026-07-11",
+   "target_window": [
+    "2026-07-12",
+    "2026-08-08"
+   ],
+   "actual_units": 3471.0,
+   "models": {
+    "ml_poisson_gbm": {
+     "active_pairs": {
+      "wape": 0.6004470290940558,
+      "mae": 0.5168765655244933,
+      "bias": 1.049967594954899,
+      "poisson_dev": 0.6488404088259517,
+      "n": 4002
+     },
+     "all_pairs": {
+      "wape": 0.6281688397942858,
+      "mae": 0.41649933962291613,
+      "bias": 1.067528627121078,
+      "poisson_dev": 0.5534789878900565,
+      "n": 5235
+     },
+     "store_category_wape": 0.17013403175672542,
+     "sku_total_wape": 0.1762928625705929,
+     "store_total_wape": 0.11951552536808466,
+     "pi90_coverage": 0.9900049975012494,
+     "pi80_coverage": 0.9725137431284357,
+     "pi90_mean_width": 2.4062968515742127
+    },
+    "ml_only_uncalibrated": {
+     "active_pairs": {
+      "wape": 0.6004470290940558,
+      "mae": 0.5168765655244933,
+      "bias": 1.049967594954899,
+      "poisson_dev": 0.6488404088259517,
+      "n": 4002
+     },
+     "all_pairs": {
+      "wape": 0.6281688397942858,
+      "mae": 0.41649933962291613,
+      "bias": 1.067528627121078,
+      "poisson_dev": 0.5534789878900565,
+      "n": 5235
+     },
+     "store_category_wape": 0.17013403175672542,
+     "sku_total_wape": 0.1762928625705929,
+     "store_total_wape": 0.11951552536808466
+    },
+    "current_trailing_rate": {
+     "active_pairs": {
+      "wape": 0.8672472181906143,
+      "mae": 0.746543394969182,
+      "bias": 1.543492985002419,
+      "poisson_dev": 2.0489315847169784,
+      "n": 4002
+     },
+     "all_pairs": {
+      "wape": 0.8682416210506099,
+      "mae": 0.5756765361349889,
+      "bias": 1.5319312397964084,
+      "poisson_dev": 1.7627901841988156,
+      "n": 5235
+     },
+     "store_category_wape": 0.5626511852926948,
+     "sku_total_wape": 0.5661344944363813,
+     "store_total_wape": 0.5434929850024189
+    },
+    "peer_smoothed": {
+     "active_pairs": {
+      "wape": 0.9231637577065733,
+      "mae": 0.7946774476009858,
+      "bias": 1.6640392988723904,
+      "poisson_dev": 1.127027298815516,
+      "n": 4002
+     },
+     "all_pairs": {
+      "wape": 0.9349053328310027,
+      "mae": 0.6198770602208998,
+      "bias": 1.6631700512426528,
+      "poisson_dev": 1.0182899180737088,
+      "n": 5235
+     },
+     "store_category_wape": 0.6748464887797256,
+     "sku_total_wape": 0.682259685162443,
+     "store_total_wape": 0.6640392988723907
+    }
+   }
+  },
+  {
+   "origin_week_end": "2026-09-05",
+   "target_window": [
+    "2026-09-06",
+    "2026-10-03"
+   ],
+   "actual_units": 3395.0,
+   "models": {
+    "ml_poisson_gbm": {
+     "active_pairs": {
+      "wape": 0.6181076183039443,
+      "mae": 0.5213885075785705,
+      "bias": 1.1868721098042443,
+      "poisson_dev": 0.6567828970735784,
+      "n": 4007
+     },
+     "all_pairs": {
+      "wape": 0.6484941131613405,
+      "mae": 0.4205611297388254,
+      "bias": 1.2106675386888355,
+      "poisson_dev": 0.5539015850298676,
+      "n": 5235
+     },
+     "store_category_wape": 0.2536728976997108,
+     "sku_total_wape": 0.25170005338663576,
+     "store_total_wape": 0.20268032137314373,
+     "pi90_coverage": 0.9907661592213626,
+     "pi80_coverage": 0.9755428000998253,
+     "pi90_mean_width": 2.5889693037184927
+    },
+    "ml_only_uncalibrated": {
+     "active_pairs": {
+      "wape": 0.6181076183039443,
+      "mae": 0.5213885075785705,
+      "bias": 1.1868721098042443,
+      "poisson_dev": 0.6567828970735784,
+      "n": 4007
+     },
+     "all_pairs": {
+      "wape": 0.6484941131613405,
+      "mae": 0.4205611297388254,
+      "bias": 1.2106675386888355,
+      "poisson_dev": 0.5539015850298676,
+      "n": 5235
+     },
+     "store_category_wape": 0.2536728976997108,
+     "sku_total_wape": 0.25170005338663576,
+     "store_total_wape": 0.20268032137314373
+    },
+    "current_trailing_rate": {
+     "active_pairs": {
+      "wape": 0.6627218934911243,
+      "mae": 0.559021712003993,
+      "bias": 1.1276134122287969,
+      "poisson_dev": 2.484625561312383,
+      "n": 4007
+     },
+     "all_pairs": {
+      "wape": 0.6642120765832106,
+      "mae": 0.43075453677172876,
+      "bias": 1.122631320569465,
+      "poisson_dev": 2.0153515163341646,
+      "n": 5235
+     },
+     "store_category_wape": 0.23372781065088757,
+     "sku_total_wape": 0.23136094674556212,
+     "store_total_wape": 0.1552268244575935
+    },
+    "peer_smoothed": {
+     "active_pairs": {
+      "wape": 0.6503656501289637,
+      "mae": 0.5485989262380578,
+      "bias": 1.152662721893491,
+      "poisson_dev": 1.0454770018091089,
+      "n": 4007
+     },
+     "all_pairs": {
+      "wape": 0.6583512707224047,
+      "mae": 0.42695368941787276,
+      "bias": 1.1542373777425323,
+      "poisson_dev": 0.8873052234962097,
+      "n": 5235
+     },
+     "store_category_wape": 0.24302938350275655,
+     "sku_total_wape": 0.24474283113336365,
+     "store_total_wape": 0.18447580033378908
+    }
+   }
+  },
+  {
+   "origin_week_end": "2026-10-03",
+   "target_window": [
+    "2026-10-04",
+    "2026-10-31"
+   ],
+   "actual_units": 6759.0,
+   "models": {
+    "ml_poisson_gbm": {
+     "active_pairs": {
+      "wape": 0.5576140242291412,
+      "mae": 0.822277636934585,
+      "bias": 1.087741074113932,
+      "poisson_dev": 0.8781991515238146,
+      "n": 3982
+     },
+     "all_pairs": {
+      "wape": 0.6127861529670686,
+      "mae": 0.7911789126847023,
+      "bias": 0.9616256448823428,
+      "poisson_dev": 1.4073329325431476,
+      "n": 5235
+     },
+     "store_category_wape": 0.28938342243647774,
+     "sku_total_wape": 0.2995604217651194,
+     "store_total_wape": 0.11044013328365637,
+     "pi90_coverage": 0.9856855851330989,
+     "pi80_coverage": 0.9580612757408338,
+     "pi90_mean_width": 3.7290306378704168
+    },
+    "ml_only_uncalibrated": {
+     "active_pairs": {
+      "wape": 0.5576140242291412,
+      "mae": 0.822277636934585,
+      "bias": 1.087741074113932,
+      "poisson_dev": 0.8781991515238146,
+      "n": 3982
+     },
+     "all_pairs": {
+      "wape": 0.6127861529670686,
+      "mae": 0.7911789126847023,
+      "bias": 0.9616256448823428,
+      "poisson_dev": 1.4073329325431476,
+      "n": 5235
+     },
+     "store_category_wape": 0.28938342243647774,
+     "sku_total_wape": 0.2995604217651194,
+     "store_total_wape": 0.11044013328365637
+    },
+    "current_trailing_rate": {
+     "active_pairs": {
+      "wape": 0.6030313351498637,
+      "mae": 0.889251632345555,
+      "bias": 0.5951975476839237,
+      "poisson_dev": 4.9263226500767585,
+      "n": 3982
+     },
+     "all_pairs": {
+      "wape": 0.6551264980026631,
+      "mae": 0.8458452722063037,
+      "bias": 0.5170883266755436,
+      "poisson_dev": 11.274891389891373,
+      "n": 5235
+     },
+     "store_category_wape": 0.40900317892824695,
+     "sku_total_wape": 0.4539623069936422,
+     "store_total_wape": 0.4048024523160764
+    },
+    "peer_smoothed": {
+     "active_pairs": {
+      "wape": 0.5966632897831808,
+      "mae": 0.8798610842809739,
+      "bias": 0.5887130580591071,
+      "poisson_dev": 1.9835263173306874,
+      "n": 3982
+     },
+     "all_pairs": {
+      "wape": 0.6500372406275647,
+      "mae": 0.8392744430566781,
+      "bias": 0.5140369978363764,
+      "poisson_dev": 8.655357077847976,
+      "n": 5235
+     },
+     "store_category_wape": 0.4152926244206897,
+     "sku_total_wape": 0.45876126598197436,
+     "store_total_wape": 0.4112869419408925
+    }
+   }
+  }
+ ],
+ "cold_start": {
+  "stores": [
+   "BLR-04",
+   "KNP-02",
+   "PAT-04",
+   "MYS-01"
+  ],
+  "styles": [
+   "MOJ-04",
+   "KUR-09",
+   "KUR-14",
+   "KUR-19",
+   "KUR-12",
+   "JKT-01",
+   "IW-02",
+   "SHW-10",
+   "IW-08",
+   "KUR-20",
+   "IW-09",
+   "MOJ-01"
+  ],
+  "origins": [
+   {
+    "origin_week_end": "2026-09-05",
+    "unseen_stores": {
+     "ml": {
+      "active_pairs": {
+       "wape": 0.7280279029419736,
+       "mae": 0.4498210469129032,
+       "bias": 1.08617858496995,
+       "poisson_dev": 0.6169039259610434,
+       "n": 683
+      },
+      "all_pairs": {
+       "wape": 0.6551379478304473,
+       "mae": 0.4248697866063742,
+       "bias": 1.2106343412797924,
+       "poisson_dev": 0.5576456257950881,
+       "n": 5235
+      },
+      "store_category_wape": 0.29866958585505365,
+      "sku_total_wape": 0.4117204221366539,
+      "store_total_wape": 0.27053430249046506,
+      "pi90_coverage": 0.9970717423133236,
+      "pi80_coverage": 0.972181551976574,
+      "pi90_mean_width": 1.9838945827232797
+     },
+     "peer_smoothed": {
+      "active_pairs": {
+       "wape": 0.7059464495483452,
+       "mae": 0.4361777477443655,
+       "bias": 1.0221614614979544,
+       "poisson_dev": 1.060522230869635,
+       "n": 683
+      },
+      "all_pairs": {
+       "wape": 0.6583512707224047,
+       "mae": 0.42695368941787276,
+       "bias": 1.1542373777425323,
+       "poisson_dev": 0.8873052234962097,
+       "n": 5235
+      },
+      "store_category_wape": 0.24459432089763805,
+      "sku_total_wape": 0.4183699923036415,
+      "store_total_wape": 0.19942074776197946
+     },
+     "current_trailing_rate": {
+      "active_pairs": {
+       "wape": 0.711690363349131,
+       "mae": 0.4397266959492435,
+       "bias": 0.9928909952606635,
+       "poisson_dev": 2.507176945023674,
+       "n": 683
+      },
+      "all_pairs": {
+       "wape": 0.6642120765832106,
+       "mae": 0.43075453677172876,
+       "bias": 1.122631320569465,
+       "poisson_dev": 2.0153515163341646,
+       "n": 5235
+      },
+      "store_category_wape": 0.23617693522906785,
+      "sku_total_wape": 0.4320695102685625,
+      "store_total_wape": 0.17456556082148472
+     }
+    },
+    "unseen_styles": {
+     "ml": {
+      "active_pairs": {
+       "wape": 0.6219772360615496,
+       "mae": 0.651120435778367,
+       "bias": 1.1859479964116992,
+       "poisson_dev": 0.7866290141127792,
+       "n": 811
+      },
+      "all_pairs": {
+       "wape": 0.635375607043241,
+       "mae": 0.41205352166414577,
+       "bias": 1.1814092884369856,
+       "poisson_dev": 0.5379696462510534,
+       "n": 5235
+      },
+      "store_category_wape": 0.2885073806334217,
+      "sku_total_wape": 0.24683841014380034,
+      "store_total_wape": 0.18942913061630715,
+      "pi90_coverage": 0.9889025893958077,
+      "pi80_coverage": 0.9728729963008631,
+      "pi90_mean_width": 3.184956843403206
+     },
+     "peer_smoothed": {
+      "active_pairs": {
+       "wape": 0.6867385461025036,
+       "mae": 0.7189161845142116,
+       "bias": 1.1967020023557127,
+       "poisson_dev": 1.2045494823543061,
+       "n": 811
+      },
+      "all_pairs": {
+       "wape": 0.6583512707224047,
+       "mae": 0.42695368941787276,
+       "bias": 1.1542373777425323,
+       "poisson_dev": 0.8873052234962097,
+       "n": 5235
+      },
+      "store_category_wape": 0.3116406430894063,
+      "sku_total_wape": 0.28404457733079647,
+      "store_total_wape": 0.21967926066866006
+     },
+     "current_trailing_rate": {
+      "active_pairs": {
+       "wape": 0.6878680800942285,
+       "mae": 0.720098643649815,
+       "bias": 1.1672555948174324,
+       "poisson_dev": 3.0722382665484034,
+       "n": 811
+      },
+      "all_pairs": {
+       "wape": 0.6642120765832106,
+       "mae": 0.43075453677172876,
+       "bias": 1.122631320569465,
+       "poisson_dev": 2.0153515163341646,
+       "n": 5235
+      },
+      "store_category_wape": 0.31252453867294855,
+      "sku_total_wape": 0.26069886140557524,
+      "store_total_wape": 0.1915979583824106
+     }
+    }
+   },
+   {
+    "origin_week_end": "2026-10-03",
+    "unseen_stores": {
+     "ml": {
+      "active_pairs": {
+       "wape": 0.6617335065417256,
+       "mae": 0.6520164212767956,
+       "bias": 1.0494009019305546,
+       "poisson_dev": 0.8138081881795364,
+       "n": 681
+      },
+      "all_pairs": {
+       "wape": 0.6070014675523427,
+       "mae": 0.7837102042380677,
+       "bias": 0.9467060936170794,
+       "poisson_dev": 1.368132483493482,
+       "n": 5235
+      },
+      "store_category_wape": 0.3012489565206037,
+      "sku_total_wape": 0.47765815821292973,
+      "store_total_wape": 0.11421049275696105,
+      "pi90_coverage": 0.9838472834067548,
+      "pi80_coverage": 0.9632892804698973,
+      "pi90_mean_width": 2.71071953010279
+     },
+     "peer_smoothed": {
+      "active_pairs": {
+       "wape": 0.6725922529201217,
+       "mae": 0.6627157146980935,
+       "bias": 0.5895907371317208,
+       "poisson_dev": 2.172062337138153,
+       "n": 681
+      },
+      "all_pairs": {
+       "wape": 0.6500372406275647,
+       "mae": 0.8392744430566781,
+       "bias": 0.5140369978363764,
+       "poisson_dev": 8.655357077847976,
+       "n": 5235
+      },
+      "store_category_wape": 0.41613614072630467,
+      "sku_total_wape": 0.550554727603908,
+      "store_total_wape": 0.41040926286827906
+     },
+     "current_trailing_rate": {
+      "active_pairs": {
+       "wape": 0.6701440635866864,
+       "mae": 0.6603034752814488,
+       "bias": 0.6100347739692003,
+       "poisson_dev": 4.685424363565627,
+       "n": 681
+      },
+      "all_pairs": {
+       "wape": 0.6551264980026631,
+       "mae": 0.8458452722063037,
+       "bias": 0.5170883266755436,
+       "poisson_dev": 11.274891389891373,
+       "n": 5235
+      },
+      "store_category_wape": 0.3939393939393938,
+      "sku_total_wape": 0.5419771485345256,
+      "store_total_wape": 0.3899652260307994
+     }
+    },
+    "unseen_styles": {
+     "ml": {
+      "active_pairs": {
+       "wape": 0.44908732441609295,
+       "mae": 0.9388488109691274,
+       "bias": 0.9250489600843322,
+       "poisson_dev": 0.9360152175530734,
+       "n": 806
+      },
+      "all_pairs": {
+       "wape": 0.6101722606712751,
+       "mae": 0.7878040706546605,
+       "bias": 0.935770213240478,
+       "poisson_dev": 1.7329421604306678,
+       "n": 5235
+      },
+      "store_category_wape": 0.26670920214453875,
+      "sku_total_wape": 0.23703409256123192,
+      "store_total_wape": 0.1311168581726843,
+      "pi90_coverage": 0.9851116625310173,
+      "pi80_coverage": 0.9528535980148883,
+      "pi90_mean_width": 4.457816377171216
+     },
+     "peer_smoothed": {
+      "active_pairs": {
+       "wape": 0.606934997083365,
+       "mae": 1.2688405336048014,
+       "bias": 0.519516092216389,
+       "poisson_dev": 2.0379146122934086,
+       "n": 806
+      },
+      "all_pairs": {
+       "wape": 0.6500372406275647,
+       "mae": 0.8392744430566781,
+       "bias": 0.5140369978363764,
+       "poisson_dev": 8.655357077847976,
+       "n": 5235
+      },
+      "store_category_wape": 0.49397448578457476,
+      "sku_total_wape": 0.5016662862360192,
+      "store_total_wape": 0.4804839077836111
+     },
+     "current_trailing_rate": {
+      "active_pairs": {
+       "wape": 0.6085064292779427,
+       "mae": 1.2721257237386272,
+       "bias": 0.5228486646884273,
+       "poisson_dev": 5.279673600520144,
+       "n": 806
+      },
+      "all_pairs": {
+       "wape": 0.6551264980026631,
+       "mae": 0.8458452722063037,
+       "bias": 0.5170883266755436,
+       "poisson_dev": 11.274891389891373,
+       "n": 5235
+      },
+      "store_category_wape": 0.4894164193867458,
+      "sku_total_wape": 0.49772502472799207,
+      "store_total_wape": 0.4771513353115728
+     }
+    }
+   }
+  ]
+ },
+ "festival_stress": {
+  "origin_week_end": "2025-10-04",
+  "ml": {
+   "active_pairs": {
+    "wape": 0.6367776582672487,
+    "mae": 2.5679268392078685,
+    "bias": 0.4095570383907629,
+    "poisson_dev": 3.4938695552274925,
+    "n": 3212
+   },
+   "all_pairs": {
+    "wape": 0.6612848351080022,
+    "mae": 1.6880132285669978,
+    "bias": 0.42190045471229004,
+    "poisson_dev": 2.4405019040143507,
+    "n": 5235
+   },
+   "store_category_wape": 0.5910525257784357,
+   "sku_total_wape": 0.5933303251888158,
+   "store_total_wape": 0.590442961609237,
+   "pi90_coverage": 0.7904732254047323,
+   "pi80_coverage": 0.677148194271482,
+   "pi90_mean_width": 4.10678704856787
+  },
+  "current_trailing_rate": {
+   "active_pairs": {
+    "wape": 0.7065287320826579,
+    "mae": 2.8492112909921135,
+    "bias": 0.3359839419439512,
+    "poisson_dev": 10.63035211462283,
+    "n": 3212
+   },
+   "all_pairs": {
+    "wape": 0.7155329392102572,
+    "mae": 1.8264883794969753,
+    "bias": 0.32567537229663995,
+    "poisson_dev": 9.673440739552424,
+    "n": 5235
+   },
+   "store_category_wape": 0.6643763349545794,
+   "sku_total_wape": 0.6680820401966082,
+   "store_total_wape": 0.6640160580560488
+  },
+  "note": "Diwali 2025 forecast using under one year of history: hard case, shown to be honest about festival-window accuracy"
+ },
+ "importance": [
+  [
+   "sku_tier4_mean",
+   0.3418167517520253
+  ],
+  [
+   "sku_all4",
+   0.17742373873549278
+  ],
+  [
+   "sku_tier13_mean",
+   0.17359122038979657
+  ],
+  [
+   "ewm1",
+   0.08468133437299191
+  ],
+  [
+   "size_share13",
+   0.05341346883763648
+  ],
+  [
+   "rate26",
+   0.05000010813205369
+  ],
+  [
+   "sku_all13",
+   0.04460862971650892
+  ],
+  [
+   "launch_wk",
+   0.04120124414629561
+  ],
+  [
+   "size_num",
+   0.034188184569387825
+  ],
+  [
+   "sqft",
+   0.0321773904394263
+  ],
+  [
+   "style_store13",
+   0.01398391962565032
+  ],
+  [
+   "core",
+   0.012255877328364528
+  ],
+  [
+   "store_share13",
+   0.010210160623172426
+  ],
+  [
+   "cat_tier13_mean",
+   0.00883068401092113
+  ],
+  [
+   "size_c",
+   0.007831770654627257
+  ]
+ ],
+ "reliability": {
+  "bins": [
+   {
+    "predicted": 0.017013292770969166,
+    "observed": 0.012531328320802004,
+    "n": 399
+   },
+   {
+    "predicted": 0.031140973068284374,
+    "observed": 0.02512562814070352,
+    "n": 398
+   },
+   {
+    "predicted": 0.051635400498480866,
+    "observed": 0.05778894472361809,
+    "n": 398
+   },
+   {
+    "predicted": 0.10797341529730804,
+    "observed": 0.1457286432160804,
+    "n": 398
+   },
+   {
+    "predicted": 0.19908057423708908,
+    "observed": 0.20100502512562815,
+    "n": 398
+   },
+   {
+    "predicted": 0.3421134493980053,
+    "observed": 0.33668341708542715,
+    "n": 398
+   },
+   {
+    "predicted": 0.4983732129053861,
+    "observed": 0.5829145728643216,
+    "n": 398
+   },
+   {
+    "predicted": 0.6913109694751617,
+    "observed": 0.7211055276381909,
+    "n": 398
+   },
+   {
+    "predicted": 0.8873537345777018,
+    "observed": 0.9045226130653267,
+    "n": 398
+   },
+   {
+    "predicted": 0.9822145256735921,
+    "observed": 0.9949874686716792,
+    "n": 399
+   }
+  ],
+  "ece": 0.020597815176034134,
+  "brier": 0.11400880764458104
+ },
+ "seconds": 220.9,
+ "scorecard": [
+  {
+   "check": "Beats trailing-rate baseline (Poisson deviance) at every test origin",
+   "passed": true
+  },
+  {
+   "check": "Beats trailing-rate baseline (WAPE) at >= 3 of 4 origins",
+   "passed": true
+  },
+  {
+   "check": "Total-volume bias within +/-10% at every origin",
+   "passed": false
+  },
+  {
+   "check": "Store x category WAPE <= 25% at >= 3 of 4 origins",
+   "passed": false
+  },
+  {
+   "check": "Probability calibration error (ECE of P(demand>=1)) <= 0.03",
+   "passed": true
+  },
+  {
+   "check": "Unseen styles: not worse than peer baseline (mean WAPE)",
+   "passed": true
+  },
+  {
+   "check": "Unseen stores: not worse than peer baseline (mean WAPE)",
+   "passed": false
+  }
+ ]
+}

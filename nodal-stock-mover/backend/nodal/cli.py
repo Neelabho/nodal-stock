@@ -9,7 +9,12 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", default=str(root / "manyavar-vch3-data" / "csv"))
     ap.add_argument("--out", default=str(root / "nodal-stock-mover" / "data"))
+    ap.add_argument("--backtest", action="store_true", help="re-run the rolling-origin forecast back-test and write docs/FORECAST_BACKTEST.json")
     a = ap.parse_args()
+    if a.backtest:
+        from .backtest_report import write
+        write(a.data, root / "nodal-stock-mover" / "docs" / "FORECAST_BACKTEST.json")
+        return
     r = run(a.data)
     out = Path(a.out); out.mkdir(parents=True, exist_ok=True)
     cols = ["id", "urgency", "type_label", "reason_label", "sku_id", "size", "source", "destination", "qty", "dispatch_date", "arrival_date", "value_mrp", "requires_approval", "explanation"]

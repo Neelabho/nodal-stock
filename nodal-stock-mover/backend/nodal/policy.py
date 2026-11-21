@@ -17,6 +17,8 @@ class Policy:
     approval_value_mrp: int = 100_000       # rules.csv "Approval": > Rs 1,00,000 at MRP needs human approval
     # --- ASSUMED ---
     dispatch_offset_days: int = 1           # plan dispatches the day after the snapshot (31 Oct -> 1 Nov)
+    use_ml_forecast: bool = True            # Poisson GBM demand forecast (forecast.py); False = trailing in-stock rate x festival index
+    use_optimizer: bool = True              # warehouse allocation by LP (maximise expected sales) instead of greedy cover-equalising
     velocity_window_days: int = 84          # = 12 weeks, the span of stock_weekly availability evidence
     min_evidence_days: int = 42             # below this many in-stock days, shrink toward peer rate
     shrink_k_days: int = 14                 # prior strength (in pseudo in-stock days) for peer shrinkage
@@ -40,6 +42,8 @@ SOURCES = {
     "donor_min_cover_days": "SOURCE: rules.csv 'Donor cover'",
     "approval_value_mrp": "SOURCE: rules.csv 'Approval'",
     "dispatch_offset_days": "ASSUMED",
+    "use_ml_forecast": "ASSUMED: validated by rolling-origin back-test (docs/FORECAST_BACKTEST.json)",
+    "use_optimizer": "ASSUMED: objective = expected revenue captured at MRP; hard rules unchanged",
     "velocity_window_days": "ASSUMED: matches 12-week stock_weekly evidence",
     "min_evidence_days": "ASSUMED",
     "shrink_k_days": "ASSUMED",

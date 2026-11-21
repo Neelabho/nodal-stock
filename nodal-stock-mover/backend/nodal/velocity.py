@@ -109,5 +109,39 @@ def compute_velocity(d: Data):
                       np.where((v.evidence_days >= p.min_evidence_days) & ((v.units >= 3) | (v.zero_class == "proven_slow")), "high", "medium"))
     seas = season_index(d, sales)
     v["season"] = v.state.map(lambda s: seas[s]["index"])
-    v["vel_eff"] = v.vel * v.season
-    return v.set_index(["store_id", "sku_id"]), seas
+    v["vel_base"] = v.vel
+    v["vel_eff_base"] = v.vel * v.season
+    v["vel_ml"] = np.nan
+    v["floor_applied"] = False
+    v = v.set_index(["store_id", "sku_id"])
+    if p.use_ml_forecast:
+        from .forecast import Panel, Forecaster, HORIZON, DEFAULT_PARAMS
+        import json
+        from pathlib import Path
+        cfg = {}
+        rp = Path(__file__).resolve().parents[2] / "docs" / "FORECAST_BACKTEST.json"
+        if rp.exists():
+            try:
+                cfg = json.loads(rp.read_text()).get("config", {})   # chosen on validation origins only (ml_eval)
+            except Exception:
+                cfg = {}
+        P = Panel(d)
+        fc = Forecaster(cfg.get("params", DEFAULT_PARAMS), cfg.get("blend_w", 1.0), cfg.get("scale", 1.0), cfg.get("alpha", 0.05)).fit(P, P.W - HORIZON)
+        mu = fc.predict(P.W)                                         # expected units over the next 28 days
+        lo, hi = fc.interval(mu, 0.9)
+        lam = pd.Series(mu / (7 * HORIZON), index=P.pairs)           # daily rate
+        v["vel_ml"] = lam.reindex(v.index).values
+        v["fc_lo"] = pd.Series(lo, index=P.pairs).reindex(v.index).values
+        v["fc_hi"] = pd.Series(hi, index=P.pairs).reindex(v.index).values
+        has = v.vel_ml.notna()
+        # in-stock floor: history is not availability-adjusted, so for positions that were out of stock part of the window,
+        # never forecast below the in-stock rate x festival index (stock-outs must not hide demand)
+        cens = has & (v.avail_days < 0.8 * v.elig_days) & (v.units > 0)
+        v["floor_applied"] = cens & (v.vel_eff_base > v.vel_ml)
+        eff = np.where(has, np.where(cens, np.maximum(v.vel_ml, v.vel_eff_base), v.vel_ml), v.vel_eff_base)
+        v["vel"] = eff
+        v["season"] = 1.0                      # festival effect is inside the forecast (features: days to festival, last year's window)
+        v["vel_eff"] = eff
+    else:
+        v["vel_eff"] = v.vel * v.season
+    return v, seas
