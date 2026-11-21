@@ -1,0 +1,22 @@
+# Render Blueprint: one web service (Docker) + one PostgreSQL database.
+# Create with: Render dashboard -> New -> Blueprint -> select this repo. See nodal-stock-mover/docs/DEPLOYMENT.md.
+services:
+  - type: web
+    name: nodal
+    runtime: docker
+    dockerfilePath: ./nodal-stock-mover/Dockerfile
+    dockerContext: .
+    plan: free            # free web services sleep after ~15 min idle (about a minute to wake). Use a paid always-on plan for a live judging session.
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODAL_MODE
+        value: published
+      - key: DATABASE_URL
+        fromDatabase:
+          name: nodal-db
+          property: connectionString
+      - key: NODAL_ADMIN_TOKEN
+        generateValue: true
+databases:
+  - name: nodal-db
+    plan: free            # free Postgres expires after 30 days; upgrade or recreate for anything longer

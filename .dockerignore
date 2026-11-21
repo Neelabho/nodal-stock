@@ -1,0 +1,8 @@
+**/.venv
+**/__pycache__
+**/data
+.git
+manyavar-vch3-data
+nodal-stock-mover/tests
+nodal-stock-mover/docs
+nodal-stock-mover/published/run_*

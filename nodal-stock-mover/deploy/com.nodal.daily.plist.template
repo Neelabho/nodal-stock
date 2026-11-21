@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- macOS launchd job: runs the NODAL daily pipeline at 06:00 local time. Replace __PROJECT_DIR__ and install:
+     cp this file to ~/Library/LaunchAgents/com.nodal.daily.plist ; launchctl load ~/Library/LaunchAgents/com.nodal.daily.plist
+     (launchd uses the Mac's timezone; the Mac must be awake. For an always-on schedule use a server.) -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.nodal.daily</string>
+  <key>ProgramArguments</key><array><string>__PROJECT_DIR__/nodal-stock-mover/scripts/publish.sh</string></array>
+  <key>StartCalendarInterval</key><dict><key>Hour</key><integer>6</integer><key>Minute</key><integer>0</integer></dict>
+  <key>StandardOutPath</key><string>/tmp/nodal-daily.log</string><key>StandardErrorPath</key><string>/tmp/nodal-daily.err</string>
+</dict></plist>
