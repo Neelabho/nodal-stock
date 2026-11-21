@@ -2,7 +2,22 @@
 
 **Brief:** Manyavar Stock Mover (Case study B). **Repo:** https://github.com/Neelabho/nodal-stock
 
-## v2 (this release): what is verified
+## v4 (latest)
+- **Moves has two switchable sections:** *Planned moves* (what the plan does) and *Shortages* (demand the plan could not cover: 19 stores, 337 items, 1,565 units, ₹1.22 Cr of sales at risk). Each shortage store has one plain-English suggested business action written by the local AI (all 19 on the last run), number-checked and cached; standard wording is the fallback. Verified in the app: switch, cards, items sheet with causes and planned warehouse deliveries, back gesture.
+- **Local-first AI with Sarvam fallback everywhere:** move reviews, shipment summaries, shortage actions and plan answers try the local model first and use Sarvam if it is unavailable, with the same safety checks (live check with the local model unreachable: Sarvam returned valid JSON in 0.5 s). **Privacy note:** in fallback, store/product facts are sent to Sarvam; `AI_REMOTE_FALLBACK=0` turns this off. Not exercised on a full pipeline run with the local model genuinely off (only unit-tested with mocks plus one live call).
+- Moves are explained in the same seven labelled rows everywhere (Move, Route, Arrives, Demand, Cover, Source, Why); the one-line explanation required by the brief is kept for the CSV.
+- Tests: 97 pass.
+
+## v3: what changed and what is verified
+- **Shipments:** 600 moves are shown as 22 store shipments (one decision each) with plain-language summaries written by the local model (all 22 from the model, number-checked, cached; template fallback). Approve / reject / skip with big buttons, swipe, keyboard shortcuts, Undo, and one-tap routine approval. One confirmation covers any big items inside a shipment; every approve and undo is in the audit log. Verified in the browser pane (approve, undo, skip, big-item confirmation).
+- **Ask:** Sarvam AI answers general questions with public facts only; anything about a store, SKU or the plan is answered locally. Cached; per-minute, per-day and global limits (429 + Retry-After). Verified live: fresh answer 1.4 s, repeat 0.01 s from cache, plan question answered locally without Sarvam. **The API key was pasted in chat: please rotate it.** It is only in a git-ignored `.env`; git history contains no copy.
+- **Add data (local app only):** upload per-file CSVs with validation, overlay on the supplied dataset, recalculate with live stage progress. Tested with API-level tests; the UI screen renders, but I have not run a real recalculation from an uploaded file in the browser.
+- **Map:** ranked next stops by demand with each stop's top SKU and numbered pins (verified).
+- **Design:** glass over blurred solid-colour light, Outfit thin type with uniform lining numerals, centred layouts, red only for critical, animations, animated logo intro. Pull-back policy confirmed by you.
+- **Platforms:** laptop, tablet and phone layouts verified in the Chromium engine; install prompt, iOS hint and back-gesture handling added. **Not tested on a real iPhone, Android phone, Safari or Firefox; install and offline are untested.**
+- Tests: 87 pass (≈2.5 min). Two real bugs were caught by testing this round (a self-recursive sheet helper and an inbox-detection inversion) and fixed.
+
+## v2: what is verified
 | Area | Evidence |
 |---|---|
 | Qwen3 8B review (local Ollama) | Real daily run on the supplied data: 60 highest-priority moves reviewed by `qwen3:8b` (≈2 s each), 43 agree / 17 flagged, 0 failed. The grounding guard rejected several first answers (invented numbers, unreferenced evidence) and the retry produced valid ones. |
@@ -12,7 +27,7 @@
 | Daily pipeline | Run end to end on the real data (≈2.5 min with 60 AI reviews): input hash, immutable snapshot, stage records, bundle publish, notification file. Tests: duplicate dataset skipped, missing files stop the run with a reason, interrupted run closed, watched-folder detection, timezone scheduling. |
 | Public app | Run in a clean virtualenv with **only** the public requirements (no pandas/numpy/scikit-learn/scipy) against PostgreSQL 17: `/healthz`, status, a persisted approval, map and UI all responded. |
 | Phone UI | Checked at 375 px in the browser pane: no horizontal overflow, 0 touch targets under 44 px, one-move review, approve persists server-side, detail sheet with AI section, original-vs-alternative comparison renders (verified with a clearly-labelled, unpublished synthetic alternative) and "Approve AI alternative" is recorded. |
-| Tests | 54 passed (≈100 s): existing 21 engine/forecast/map tests + 33 new (AI, persistence/API, pipeline, PWA/mobile static). |
+| Tests | superseded: see v3 above. |
 
 ## Not done / not verified (be honest)
 - **No public URL yet.** Render needs your account; `render.yaml`, `Dockerfile`, `/healthz`, `.env.example` and `docs/DEPLOYMENT.md` are ready. Docker Desktop is paused here, so the **image was not built**; the public dependency set was validated in a venv instead.

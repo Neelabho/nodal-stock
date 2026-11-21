@@ -13,7 +13,7 @@ const isMobile = () => MQ.matches;
 const ico = (n) => `<i data-lucide="${n}"></i>`;
 let _iconQueued = false;
 new MutationObserver(() => { if (_iconQueued || !window.lucide) return; _iconQueued = true; requestAnimationFrame(() => { _iconQueued = false; window.lucide.createIcons(); }); }).observe(document.body, { childList: true, subtree: true });
-const TITLES = { overview: "Today", register: "All moves", ask: "Ask", data: "Add data", ai: "AI review", runs: "Daily runs", history: "History", map: "Map", safety: "Rules & gaps", quality: "Data quality", model: "Forecast", method: "Method" };
+const TITLES = { overview: "Today", register: "Moves", ask: "Ask", data: "Add data", ai: "AI review", runs: "Daily runs", history: "History", map: "Map", safety: "Rules & gaps", quality: "Data quality", model: "Forecast", method: "Method" };
 const MTITLES = TITLES;
 
 S.decFull = {};
@@ -42,6 +42,7 @@ async function boot(refresh) {
     S.quality = null; S.safety = null;
     S.cap = await api("/api/capabilities").catch(() => ({}));
     S.ship = await api("/api/shipments");
+    S.short = await api("/api/shortages").catch(() => null);
     await loadDec(); await refreshStatus(); gateNav();
     $("#asof").textContent = `Stock as of ${S.ov.manifest.as_of} · plan dispatches ${S.ov.manifest.dispatch_date}`;
     netBanner(); installUI(); render();
@@ -92,7 +93,50 @@ function filtered() {
 const uniq = (k) => [...new Set(S.acts.map((a) => a[k]))].sort();
 function opts(list, sel, label) { return `<option value="">${label}</option>` + list.map(([v, t]) => `<option value="${esc(v)}" ${sel === v ? "selected" : ""}>${esc(t)}</option>`).join(""); }
 
-function vRegister() {
+S.movesView = "moves";
+const srcLabel = (s) => (s === "local_ai" ? "Written by the local AI" : s === "sarvam" ? "Written by Sarvam AI" : "Standard wording");
+function segHtml() {
+  const n = S.short ? S.short.groups.length : 0;
+  return `<div style="display:flex;justify-content:center;margin:.2rem 0 1rem"><div class="seg" role="tablist" aria-label="Moves view"><button role="tab" data-mv="moves" class="${S.movesView === "moves" ? "on" : ""}">Planned moves</button><button role="tab" data-mv="shortages" class="${S.movesView === "shortages" ? "on" : ""}">Shortages${n ? ` · ${n}` : ""}</button></div></div>`;
+}
+function vRegister() { return segHtml() + (S.movesView === "shortages" ? vShortages() : vMoves()); }
+const dm = (iso) => new Date(iso + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+function irow(o) {
+  return `<div class="irow" style="--i:${o.i || 0}" ${o.attr || ""}>
+    <div class="ih"><b>${o.title}</b>${o.badges || ""}</div>
+    ${o.sub ? `<div class="is">${o.sub}</div>` : ""}
+    ${o.tags && o.tags.length ? `<div class="ic">${o.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join("")}</div>` : ""}
+    ${o.note ? `<div class="id">${o.note}</div>` : ""}</div>`;
+}
+const CAUSE_LABEL = { store_full: "Store is full", no_warehouse_stock: "Warehouse has none", no_store_spare: "No store can spare any", limited_by_supply_order: "Supply ran out" };
+function vShortages() {
+  const s = S.short;
+  if (!s || !s.groups.length) return `<h1>Shortages</h1><div class="empty">No shortages: the plan covers all expected demand.</div>`;
+  const t = s.totals;
+  const cards = s.groups.map((g, i) => `<article class="mcard" style="--i:${Math.min(i, 12)}" data-sid="${esc(g.id)}">
+    <div class="mc-top"><span class="pill ${g.out_of_stock_items ? "warn" : "type"}">${g.out_of_stock_items} will be out of stock</span><span class="muted">tier ${esc(g.tier || "")}</span></div>
+    <h3 class="mc-title">${esc(g.city || g.store)}</h3><div class="mc-route">${esc(g.store)}</div>
+    <div class="mc-facts"><div><b>${num(g.units_short)}</b><span>units short</span></div><div><b>${money(g.value_mrp)}</b><span>value</span></div><div><b>${g.n_items}</b><span>items</span></div></div>
+    <div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-bottom:.8rem">${Object.entries(g.causes).map(([k, v]) => `<span class="pill type" style="text-transform:none;letter-spacing:.04em">${v} · ${esc(CAUSE_LABEL[k] || k)}</span>`).join("")}${g.with_planned_delivery ? `<span class="pill ok" style="text-transform:none;letter-spacing:.04em">${g.with_planned_delivery} · delivery planned</span>` : ""}</div>
+    <div class="actbox"><span class="ek">Suggested action</span><p>${esc(g.action)}</p><small class="faint">${esc(srcLabel(g.action_source))}</small></div>
+    <button class="link" data-see="${esc(g.id)}">See the items</button></article>`).join("");
+  return `<h1>Shortages</h1><p class="lead">Demand the plan could not cover with the stock available. ${t.stores} stores · ${num(t.items)} items · ${num(t.units)} units · ${money(t.value_mrp)} of sales at risk. Each store has one suggested business action.</p>${cards}`;
+}
+async function openShortage(id) {
+  const d = $("#drawer");
+  d.innerHTML = '<div class="loading">Loading…</div>'; showSheet(d);
+  let g; try { g = await api("/api/shortages/" + encodeURIComponent(id)); } catch (e) { d.innerHTML = `<div class="note">${esc(e.message)}</div>`; return; }
+  const lines = g.items.map((i, k) => irow({ i: Math.min(k, 8), title: `${i.units} × ${esc(i.sku)}`, badges: i.out_of_stock_on_arrival ? '<span class="pill warn">out of stock</span>' : "",
+    sub: `${esc(i.style || "")} · size ${esc(i.size || "")}`, tags: (i.codes || []).map((c) => CAUSE_LABEL[c] || c),
+    note: i.planned_delivery ? `Delivery planned ${esc(dm(i.planned_delivery.first))} · ${i.planned_delivery.first_qty} units` : "" }));
+  d.innerHTML = `<button class="btn x" id="dx">${ico("x")}<span>Close</span></button><div class="eyebrow">Shortage</div><h2 style="margin:.2rem 0 .6rem">${esc(g.city || g.store)} · ${esc(g.store)}</h2>
+    <div class="say"><b style="font-weight:400">Suggested action</b><br>${esc(g.action)}<br><small class="faint">${esc(srcLabel(g.action_source))}</small></div>
+    <div style="display:flex;justify-content:center;gap:2rem;margin:1rem 0"><div><b style="font-size:1.8rem;font-weight:200">${num(g.units_short)}</b><br><span class="muted" style="font-size:.7rem;letter-spacing:.16em;text-transform:uppercase">units short</span></div><div><b style="font-size:1.8rem;font-weight:200">${money(g.value_mrp)}</b><br><span class="muted" style="font-size:.7rem;letter-spacing:.16em;text-transform:uppercase">value</span></div></div>
+    <h3>Items (highest value first)</h3><div class="queue" id="sh-lines">${lines.slice(0, 12).join("")}</div>${lines.length > 12 ? `<p><button class="link" id="sh-more">Show all ${lines.length}</button></p>` : ""}`;
+  $("#dx").onclick = () => closeDrawer();
+  const more = $("#sh-more"); if (more) more.onclick = () => { $("#sh-lines").innerHTML = lines.join(""); more.remove(); };
+}
+function vMoves() {
   const f = S.f;
   const stores = S.ov.stores.map((s) => [s.store_id, `${s.store_id} · ${s.city} (${s.tier})`]);
   const reasons = [...new Set(S.acts.map((a) => a.reason))].map((r) => [r, S.acts.find((a) => a.reason === r).reason_label]);
@@ -102,7 +146,7 @@ function vRegister() {
   const slice = rows.slice(S.page * PAGE, S.page * PAGE + PAGE);
   const approved = S.acts.filter((a) => S.dec[a.id] === "approved").length, rejected = S.acts.filter((a) => S.dec[a.id] === "rejected").length;
   return `
-  <h1>All moves</h1><p class="lead">The individual moves behind each shipment. Open one for its evidence.</p>
+  <h1>Planned moves</h1><p class="lead">The individual moves behind each shipment. Open one for its evidence.</p>
   <div class="filters ${S.fopen ? "open" : ""}">
     <input type="search" id="f-q" placeholder="Search SKU, style, store…" value="${esc(f.q)}" aria-label="Search">
     <select id="f-type" aria-label="Type">${opts([["WH_TO_STORE", "Warehouse → Store"], ["STORE_TO_STORE", "Store → Store"], ["PULL_BACK", "Pull back"]], f.type, "All types")}</select>
@@ -142,6 +186,8 @@ function rowHtml(a) {
 }
 
 function bindRegister() {
+  document.querySelectorAll("[data-mv]").forEach((b) => { b.onclick = () => { S.movesView = b.dataset.mv; S.page = 0; render(); window.scrollTo(0, 0); }; });
+  if (S.movesView === "shortages") { document.querySelectorAll("[data-see]").forEach((b) => b.addEventListener("click", () => openShortage(b.dataset.see))); document.querySelectorAll(".mcard[data-sid]").forEach((c) => c.addEventListener("click", (e) => { if (!e.target.closest("button")) openShortage(c.dataset.sid); })); return; }
   const set = (id, key, ev = "change") => $(id).addEventListener(ev, (e) => { S.f[key] = e.target.type === "checkbox" ? e.target.checked : e.target.value; S.page = 0; render(); if (key === "q") { const i = $("#f-q"); i.focus(); i.setSelectionRange(i.value.length, i.value.length); } });
   set("#f-q", "q", "input"); set("#f-type", "type"); set("#f-reason", "reason"); set("#f-urgency", "urgency"); set("#f-store", "store"); set("#f-cat", "cat"); set("#f-conf", "conf"); set("#f-dec", "dec"); set("#f-sort", "sort"); set("#f-appr", "appr");
   $("#f-reset").onclick = () => { S.f = { q: "", type: "", reason: "", urgency: "", store: "", cat: "", conf: "", appr: false, dec: "", sort: "default" }; S.page = 0; render(); };
@@ -401,6 +447,7 @@ function cardHtml(a, review, i = 0) {
 function onMainClick(e) {
   const btn = e.target.closest("button[data-act]");
   const card = e.target.closest(".mcard");
+  if (card && card.dataset.sid) return;                       // shortage cards have their own handlers
   if (btn && card) {
     const id = card.dataset.id, act = btn.dataset.act;
     if (act === "details") return openDrawer(id);
@@ -705,7 +752,9 @@ async function openShipment(id) {
   const d = $("#drawer");
   d.innerHTML = '<div class="loading">Loading…</div>'; showSheet(d);
   let s; try { s = await api("/api/shipments/" + encodeURIComponent(id)); } catch (e) { d.innerHTML = `<div class="note">${esc(e.message)}</div>`; return; }
-  const lines = s.moves.map((m, i) => `<div class="qrow" style="--i:${Math.min(i, 8)}" data-move="${esc(m.id)}" tabindex="0" role="button"><div class="qm"><b>${m.qty} × ${esc(m.sku_id)}</b><span>${esc(m.style_name)} · size ${esc(m.size)} · from ${esc(m.source)} · arrives ${esc(m.arrival_date.slice(5))}</span></div><div>${aiChip(m)}${m.requires_approval ? ' <span class="pill warn">big</span>' : ""}</div></div>`);
+  const lines = s.moves.map((m, i) => irow({ i: Math.min(i, 8), attr: `data-move="${esc(m.id)}" tabindex="0" role="button"`, title: `${m.qty} × ${esc(m.sku_id)}`,
+    badges: aiChip(m) + (m.requires_approval ? ' <span class="pill warn">big</span>' : ""), sub: `${esc(m.style_name)} · size ${esc(m.size)}`,
+    note: `From ${esc(m.source)} · arrives ${esc(dm(m.arrival_date))}` }));
   d.innerHTML = `<button class="btn x" id="dx">${ico("x")}<span>Close</span></button>
     <div class="eyebrow">${s.kind === "pullback" ? "Pull-back" : "Shipment"} · ${esc(s.store)}</div><h2 style="margin:.2rem 0 .6rem">${esc(s.city || s.store)}</h2>
     <div class="say">${esc(s.summary)}<br><small class="faint">${s.summary_source === "local_ai" ? "Written by the local AI model" : s.summary_source === "sarvam" ? "Written by Sarvam AI (the local model was unavailable)" : "Standard wording"}</small></div>

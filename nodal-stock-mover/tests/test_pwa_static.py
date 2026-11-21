@@ -101,3 +101,11 @@ def test_hover_or_press_never_brightens_the_glass_light():
     assert "hover::before" not in css and "active::before" not in css
     assert not re.search(r"\.hl::before\s*[,{]", css.split("details.card::before")[0].split(".glass::before")[-1] if False else "")   # nested glass rows carry no droplet
     assert "details.card::before" in css and ".hl:hover{background:var(--accent-soft)" in css
+
+
+def test_moves_screen_has_the_two_switchable_sections_and_shortage_cards_have_their_own_handlers():
+    js = (FE / "app.js").read_text()
+    assert 'data-mv="moves"' in js and 'data-mv="shortages"' in js and "Planned moves" in js and "Shortages" in js
+    assert "function vShortages" in js and "async function openShortage" in js and "Suggested action" in js
+    assert 'card.dataset.sid) return' in js                             # regression: the move-card handler used to hijack shortage cards
+    assert "Written by Sarvam AI" in js and "Written by the local AI" in js    # the source of every AI text is shown

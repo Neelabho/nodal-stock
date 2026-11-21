@@ -270,3 +270,24 @@ details.card::before,.drawer::before{display:none}
 .ek{font-size:.62rem;text-transform:uppercase;letter-spacing:.16em;color:var(--muted)}
 .ev{font-size:.92rem;line-height:1.45}
 .say .exp{margin:.2rem auto}
+
+/* ---------- two-section switch (Planned moves / Shortages) and suggested action ---------- */
+.seg{display:inline-flex;gap:4px;padding:4px;border-radius:999px;background:var(--glass);box-shadow:inset 0 1px 0 var(--rim),inset 0 0 0 1px var(--rim-soft);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px)}
+.seg button{min-height:44px;padding:0 1.4rem;border:0;border-radius:999px;background:none;color:var(--muted);font:300 .95rem var(--font);cursor:pointer;transition:background .3s var(--ease),color .3s,transform .2s}
+.seg button.on{background:var(--accent-soft);color:var(--accent)}.seg button:active{transform:scale(.97)}
+.actbox{max-width:460px;margin:.2rem auto .5rem;padding:.8rem 1.1rem;border-radius:22px;background:var(--accent-soft);text-align:center}
+.actbox p{margin:.3rem 0 .2rem;font-size:.95rem;line-height:1.5}
+.mcard[data-sid]{cursor:pointer}
+
+/* ---------- item rows: one consistent structure (title line, product line, cause tags, note) ---------- */
+.irow{display:grid;gap:.35rem;padding:.85rem 1rem;border-radius:24px;background:var(--glass);box-shadow:inset 0 0 0 1px var(--rim-soft);text-align:center;animation:rise .45s var(--ease) both;animation-delay:calc(var(--i,0) * 40ms)}
+.irow[role=button]{cursor:pointer;transition:transform .25s var(--ease),background .3s}.irow[role=button]:hover{background:var(--glass-2);transform:translateY(-1px)}
+.ih{display:flex;justify-content:center;align-items:center;gap:.5rem;flex-wrap:wrap}.ih b{font-weight:400;font-size:1rem}
+.is{font-size:.85rem;color:var(--muted)}
+.ic{display:flex;justify-content:center;gap:5px;flex-wrap:wrap}
+.tag{font-size:.7rem;padding:.12rem .65rem;border-radius:999px;background:var(--glass-2);color:var(--muted)}
+.id{font-size:.8rem;color:var(--ok)}
+
+/* sheet close button: a small round icon so it never covers content */
+.drawer .x{width:44px;height:44px;min-height:44px;padding:0;border-radius:50%;float:right;margin:0 0 .4rem .6rem}
+.drawer .x span{display:none}
