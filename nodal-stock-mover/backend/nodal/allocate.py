@@ -613,16 +613,17 @@ class Planner:
             day = self.dispatch_day + self.lead_wh(st)
             n = self.need(pos, day)
             if n > 0:
-                why = []
+                why, codes = [], []
                 if self.room(st) <= 0:
-                    why.append(f"{st} is at/over capacity")
+                    why.append(f"{st} is at/over capacity"); codes.append("store_full")
                 if self.wh.get(sku, 0) <= 0:
-                    why.append("no warehouse stock")
+                    why.append("no warehouse stock"); codes.append("no_warehouse_stock")
                 if self._best_donor(sku, st) is None:
-                    why.append("no store has surplus above 30-day cover")
+                    why.append("no store has surplus above 30-day cover"); codes.append("no_store_spare")
+                it = self.items.loc[sku]
                 self.unresolved.append({"kind": "unmet_demand", "store": st, "sku": sku, "units": n, "cover_days": _r(self.cover(pos, day)), "detail": f"{st}/{sku}: needs {n} units; " + "; ".join(why or ["limited by supply ordering"]),
-                                        "velocity_effective": round(self.veff(pos, day), 4)})
-
+                                        "velocity_effective": round(self.veff(pos, day), 4), "reasons": codes or ["limited_by_supply_order"], "category": it.category, "size": it["size"],
+                                        "style": it.style_name, "value_mrp": int(n * it.mrp)})
 
 
 def _r(x):

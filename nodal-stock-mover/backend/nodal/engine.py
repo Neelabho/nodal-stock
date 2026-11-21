@@ -282,5 +282,5 @@ def run(data_dir: str) -> dict:
                   "plan_in": ledger_in.get((p.store, p.sku), 0), "plan_out": ledger_out.get((p.store, p.sku), 0)} for p in pl.P.values()]
     wh = [{"sku": k, "on_hand": int(v), "style": items.at[k, "style_id"], "category": items.at[k, "category"], "plan_out": ledger_out.get((d.warehouse_id, k), 0)} for k, v in pl.wh_total0.items() if k in items.index]
     return {"_ctx": {"d": d, "vel": vel, "seas": seas, "pl": pl, "acts": acts}, "positions": positions, "warehouse": wh, "manifest": manifest, "audit": audit, "summary": summary, "actions": acts, "validation": final, "excluded": excluded,
-            "blocked_samples": dict(block_samples), "unresolved": unresolved[:400],
+            "blocked_samples": dict(block_samples), "unresolved": unresolved,
             "stores": [{"store_id": i, "city": r.city, "state": r.state, "tier": r.tier, "zone": r.zone, "capacity": int(r.stock_capacity_units)} for i, r in stores.iterrows()]}

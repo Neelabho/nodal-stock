@@ -56,6 +56,11 @@ def _load(refresh=False) -> dict:
                 sh = shp.build(_state["r"]["actions"], _state["r"]["stores"], _state["r"]["manifest"]["seasonality"], rv)
                 shp.summarise(sh, None)
                 _state["r"]["shipments"] = sh
+            if "shortages" not in _state["r"]:                          # older bundles: build with standard wording (no delivery dates)
+                from . import shortages as sht
+                g = sht.build(_state["r"].get("unresolved", []), _state["r"]["stores"], {}, _state["r"]["manifest"]["seasonality"])
+                sht.summarise(g, None)
+                _state["r"]["shortages"] = g
             _state["by_id"] = {a["id"]: a for a in _state["r"]["actions"]}
             _state["ship_by_id"] = {s["id"]: s for s in _state["r"]["shipments"]}
         return _state["r"]
@@ -210,6 +215,24 @@ def shipment_detail(sid: str):
     lines = [{**{k: a[k] for k in ("id", "type", "type_label", "reason_label", "urgency", "sku_id", "style_name", "size", "source", "destination", "qty", "arrival_date", "value_mrp", "requires_approval", "explanation")},
               **_ai_brief(a["id"]), "decision": (dec.get(a["id"]) or {}).get("decision")} for a in (_state["by_id"][m] for m in s["move_ids"])]
     return {**{k: v for k, v in s.items() if k != "move_ids"}, **_ship_status(s, dec), "moves": lines}
+
+
+@app.get("/api/shortages")
+def shortages_list():
+    """Demand the plan could not cover, grouped by store, each with a plain-English business action."""
+    r = _result()
+    g = r["shortages"]
+    return {"totals": {"stores": len(g), "items": sum(x["n_items"] for x in g), "units": sum(x["units_short"] for x in g), "value_mrp": sum(x["value_mrp"] for x in g)},
+            "groups": [{k: v for k, v in x.items() if k != "items"} | {"top_items": x["items"][:3]} for x in g]}
+
+
+@app.get("/api/shortages/{sid}")
+def shortage_detail(sid: str):
+    r = _result()
+    g = next((x for x in r["shortages"] if x["id"] == sid), None)
+    if not g:
+        raise HTTPException(404, "unknown shortage group")
+    return g
 
 
 class BatchIn(BaseModel):
