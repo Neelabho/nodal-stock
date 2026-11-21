@@ -15,7 +15,7 @@ No LLM is involved in any quantity.
 
 On a phone, use *Share → Add to Home Screen* (iOS) or *Install app* (Android/desktop) to install it. The free host sleeps when idle, so the first load can take about a minute. Approving a plan records the decision only; no stock is dispatched.
 
-**Demo video (1:48, website + phone, Sarvam AI voiceover):** [`demo/nodal-demo.mp4`](demo/nodal-demo.mp4) · script: [`nodal-stock-mover/docs/DEMO_SCRIPT.md`](nodal-stock-mover/docs/DEMO_SCRIPT.md)
+**Demo video (1:48, website + phone, Sarvam AI voiceover):** https://www.loom.com/share/6406f40e959f4d95a6b73198f6524d06
 
 ## Run it
 
