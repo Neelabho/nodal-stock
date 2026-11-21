@@ -39,10 +39,20 @@ outcomes = sa.Table("outcomes", meta,                                   # founda
     sa.Column("id", sa.Integer, primary_key=True, autoincrement=True), sa.Column("run_id", sa.String(40), index=True), sa.Column("move_id", sa.String(16)),
     sa.Column("recorded_at", sa.String(32)), sa.Column("actual_moved", sa.Integer), sa.Column("units_sold_after", sa.Integer),
     sa.Column("remaining_stock", sa.Integer), sa.Column("forecast_units", sa.Float), sa.Column("note", sa.Text))
+ai_text = sa.Table("ai_text", meta,                                       # cached plain-language summaries (key = hash of facts + prompt + model)
+    sa.Column("key", sa.String(64), primary_key=True), sa.Column("kind", sa.String(24), nullable=False), sa.Column("text", sa.Text, nullable=False),
+    sa.Column("model", sa.String(64)), sa.Column("created_at", sa.String(32)))
+qa_cache = sa.Table("qa_cache", meta,                                    # cached answers to user questions
+    sa.Column("qhash", sa.String(64), primary_key=True), sa.Column("question", sa.Text, nullable=False), sa.Column("answer", sa.Text, nullable=False),
+    sa.Column("source", sa.String(24), nullable=False), sa.Column("model", sa.String(64)), sa.Column("hits", sa.Integer, server_default="0"),
+    sa.Column("created_at", sa.String(32)), sa.Column("last_hit", sa.String(32)))
+qa_usage = sa.Table("qa_usage", meta,                                    # rate-limiting ledger
+    sa.Column("id", sa.Integer, primary_key=True, autoincrement=True), sa.Column("ts", sa.String(32), nullable=False, index=True),
+    sa.Column("client", sa.String(64), index=True), sa.Column("route", sa.String(12)), sa.Column("cached", sa.Boolean))
 schema_migrations = sa.Table("schema_migrations", meta, sa.Column("version", sa.Integer, primary_key=True), sa.Column("applied_at", sa.String(32)))
 
 # version -> tables created. Add a new entry (never edit an old one) for every future schema change.
-MIGRATIONS = {1: [runs, moves, ai_reviews, decisions, audit_events, outcomes]}
+MIGRATIONS = {1: [runs, moves, ai_reviews, decisions, audit_events, outcomes], 2: [ai_text, qa_cache, qa_usage]}
 
 _engine = None
 _lock = threading.Lock()
@@ -216,3 +226,45 @@ def cached_review(evidence_hash: str, model: str) -> dict | None:
     with engine().connect() as c:
         r = c.execute(sa.select(ai_reviews).where(ai_reviews.c.evidence_hash == evidence_hash, ai_reviews.c.state == "completed", ai_reviews.c.model == model).limit(1)).mappings().first()
     return dict(r) if r else None
+
+
+# ---------------------------------------------------------------- text cache + Q&A cache + usage
+def get_text(key: str) -> str | None:
+    with engine().connect() as c:
+        r = c.execute(sa.select(ai_text.c.text).where(ai_text.c.key == key)).first()
+    return r[0] if r else None
+
+
+def put_text(key: str, kind: str, text: str, model: str):
+    with engine().begin() as c:
+        if not c.execute(sa.select(ai_text.c.key).where(ai_text.c.key == key)).first():
+            c.execute(sa.insert(ai_text).values(key=key, kind=kind, text=text, model=model, created_at=now()))
+
+
+def qa_get(qhash: str) -> dict | None:
+    with engine().begin() as c:
+        r = c.execute(sa.select(qa_cache).where(qa_cache.c.qhash == qhash)).mappings().first()
+        if r:
+            c.execute(sa.update(qa_cache).where(qa_cache.c.qhash == qhash).values(hits=(r["hits"] or 0) + 1, last_hit=now()))
+    return dict(r) if r else None
+
+
+def qa_put(qhash: str, question: str, answer: str, source: str, model: str):
+    with engine().begin() as c:
+        if not c.execute(sa.select(qa_cache.c.qhash).where(qa_cache.c.qhash == qhash)).first():
+            c.execute(sa.insert(qa_cache).values(qhash=qhash, question=question, answer=answer, source=source, model=model, hits=0, created_at=now(), last_hit=now()))
+
+
+def qa_log(client: str, route: str, cached: bool):
+    with engine().begin() as c:
+        c.execute(sa.insert(qa_usage).values(ts=now(), client=client, route=route, cached=cached))
+
+
+def qa_count(since_iso: str, client: str | None = None, uncached_only=False) -> int:
+    q = sa.select(sa.func.count()).select_from(qa_usage).where(qa_usage.c.ts >= since_iso)
+    if client:
+        q = q.where(qa_usage.c.client == client)
+    if uncached_only:
+        q = q.where(qa_usage.c.cached == sa.false())
+    with engine().connect() as c:
+        return c.execute(q).scalar() or 0
