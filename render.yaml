@@ -17,6 +17,10 @@ services:
           property: connectionString
       - key: NODAL_ADMIN_TOKEN
         generateValue: true
+      - key: SARVAM_API_KEY
+        sync: false           # Render asks you for this value when you create the Blueprint; it is never stored in the repo
+      - key: SARVAM_MODEL
+        value: sarvam-105b-conversations
 databases:
   - name: nodal-db
     plan: free            # free Postgres expires after 30 days; upgrade or recreate for anything longer
