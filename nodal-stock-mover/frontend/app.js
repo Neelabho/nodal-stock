@@ -13,8 +13,8 @@ const isMobile = () => MQ.matches;
 const ico = (n) => `<i data-lucide="${n}"></i>`;
 let _iconQueued = false;
 new MutationObserver(() => { if (_iconQueued || !window.lucide) return; _iconQueued = true; requestAnimationFrame(() => { _iconQueued = false; window.lucide.createIcons(); }); }).observe(document.body, { childList: true, subtree: true });
-const MTITLES = { overview: "Today", register: "Moves", ai: "AI review", runs: "Daily runs", history: "History", safety: "Checks", map: "Map", quality: "Data quality", model: "Forecast", method: "Method" };
-const TITLES = { overview: "Overview", register: "Action register", ai: "AI Intelligence", runs: "Daily runs", history: "History", map: "Hotspot map", safety: "Rules & gaps", quality: "Data quality", model: "Forecast model", method: "Method" };
+const TITLES = { overview: "Today", register: "All moves", ask: "Ask", data: "Add data", ai: "AI review", runs: "Daily runs", history: "History", map: "Map", safety: "Rules & gaps", quality: "Data quality", model: "Forecast", method: "Method" };
+const MTITLES = TITLES;
 
 S.decFull = {};
 function clientId() { try { let c = localStorage.getItem("nodal-client-id"); if (!c) { c = Math.random().toString(36).slice(2, 10); localStorage.setItem("nodal-client-id", c); } return c; } catch { return "anon"; } }
@@ -33,14 +33,16 @@ async function api(p, opt) {
 }
 
 async function boot(refresh) {
-  $("#bar-title").textContent = isMobile() ? MTITLES[S.tab] : TITLES[S.tab];
+  $("#bar-title").textContent = TITLES[S.tab];
   $("#main").innerHTML = '<div class="loading">Loading today\'s plan…</div>';
   try {
     if (refresh) await api("/api/run", { method: "POST" });
     S.ov = await api("/api/overview");
     S.acts = await api("/api/actions");
     S.quality = null; S.safety = null;
-    await loadDec(); await refreshStatus();
+    S.cap = await api("/api/capabilities").catch(() => ({}));
+    S.ship = await api("/api/shipments");
+    await loadDec(); await refreshStatus(); gateNav();
     $("#asof").textContent = `Stock as of ${S.ov.manifest.as_of} · plan dispatches ${S.ov.manifest.dispatch_date}`;
     netBanner(); render();
   } catch (e) {
@@ -50,7 +52,7 @@ async function boot(refresh) {
 
 function setTab(t, filter) {
   S.tab = t;
-  $("#bar-title").textContent = isMobile() ? (MTITLES[t] || TITLES[t]) : (TITLES[t] || t);
+  $("#bar-title").textContent = TITLES[t] || t;
   if (filter) { S.f = { ...S.f, q: "", type: "", reason: "", urgency: "", store: "", cat: "", conf: "", appr: false, dec: "", ...filter }; S.page = 0; }
   document.querySelectorAll("[data-tab]").forEach((b) => b.classList.toggle("on", b.dataset.tab === t));
   render();
@@ -60,7 +62,9 @@ function setTab(t, filter) {
 function render() {
   const m = $("#main");
   if (!S.ov) return;
-  if (S.tab === "overview") { m.innerHTML = isMobile() ? vToday() : vOverview(); bindRows(m); }
+  if (S.tab === "overview") { m.innerHTML = vToday(); bindToday(m); }
+  else if (S.tab === "ask") { m.innerHTML = vAsk(); bindAsk(); }
+  else if (S.tab === "data") { vData(); return; }
   else if (S.tab === "register") { m.innerHTML = vRegister(); bindRegister(); }
   else if (S.tab === "map") { m.innerHTML = vMapShell(); bindMap(); }
   else if (S.tab === "model") { vModel(); return; }
@@ -73,44 +77,6 @@ function render() {
   m.querySelectorAll("[data-go]").forEach((el) => el.addEventListener("click", () => setTab(el.dataset.go, el.dataset.f ? JSON.parse(el.dataset.f) : null)));
 }
 
-/* ------------------------------------------------------------ overview */
-function vOverview() {
-  const { summary: s, manifest: mf, validation: v } = S.ov;
-  const passN = v.rules.filter((r) => r.passed).length;
-  const maxU = Math.max(...Object.values(s.by_reason).map((x) => x.units), 1);
-  const reasonNames = { under_stocked: "Under-stocked → warehouse", scheduled_inbound: "Scheduled inbound dispatch", display_minimum: "Minimum display fill", ageing_relocation: "Ageing → where it sells", surplus_rebalance: "Surplus store → store", over_capacity: "Over-capacity relief", ageing_pullback: "Ageing pull-back" };
-  const bars = Object.entries(s.by_reason).filter(([, x]) => x.actions).map(([k, x]) => `<div class="bar-row"><span class="n">${reasonNames[k] || k}</span><span class="t"><i style="width:${(x.units / maxU) * 100}%"></i></span><span class="c">${num(x.actions)} moves · ${num(x.units)} units</span></div>`).join("");
-  const hl = (s.highlights || []).map((h) => `<div class="card hl ${h.tone}" tabindex="0" role="button" data-go="${h.tab}" ${h.filter ? `data-f='${esc(JSON.stringify(h.filter))}'` : ""}>${ico(h.tone === "bad" ? "alert-triangle" : h.tone === "warn" ? "alert-triangle" : "info")}<div><b>${esc(h.title)}</b><p>${esc(h.text)}</p></div></div>`).join("");
-  return `${statusHtml()}
-  <h1>${num(s.total.actions)} moves proposed for ${esc(mf.dispatch_date)}</h1>
-  <p class="lead">Built from ${num(mf.velocity.positions)} store × SKU positions across 20 stores and the Kolkata warehouse. Every quantity comes from sales, stock and rule data; nothing is dispatched until a merchandiser approves it.</p>
-  <div class="grid kpis">
-    <div class="card kpi"><div class="v">${num(s.total.units)}</div><div class="l">units to move</div><div class="s">${lakh(s.total.value_mrp)} at MRP</div></div>
-    <div class="card kpi"><div class="v">${num(s.by_type.WH_TO_STORE.actions)}</div><div class="l">warehouse → store</div><div class="s">${num(s.by_type.WH_TO_STORE.units)} units · ${num(s.scheduled)} scheduled on planned inbound</div></div>
-    <div class="card kpi"><div class="v">${num(s.by_type.STORE_TO_STORE.actions)}</div><div class="l">store → store</div><div class="s">${num(s.by_type.STORE_TO_STORE.units)} units</div></div>
-    <div class="card kpi"><div class="v">${num(s.by_type.PULL_BACK.actions)}</div><div class="l">pull-backs</div><div class="s">${num(s.by_type.PULL_BACK.units)} units (assumed destination: WH-KOL)</div></div>
-    <div class="card kpi"><div class="v">${num(s.needs_approval)}</div><div class="l">need human approval</div><div class="s">single move &gt; ${inr(mf.policy.approval_value_mrp)} at MRP</div></div>
-    <div class="card kpi" data-go="safety" style="cursor:pointer"><div class="v">${passN}/${v.rules.length}</div><div class="l">hard rules pass</div><div class="s">independent validator, ${s.excluded_by_validator} moves excluded</div></div>
-  </div>
-  <h2>What NODAL found</h2><div class="grid cols2">${hl}</div>
-  <h2>Where the moves come from</h2><div class="card">${bars}</div>
-  <h2>Urgency</h2><div class="card">${["Critical", "High", "Normal", "Housekeeping"].map((u) => `<span class="pill ${u}" style="margin-right:8px">${u}: ${num(s.urgency[u] || 0)}</span>`).join("")}
-    <p class="muted" style="margin:.7rem 0 0;font-size:.86rem">Critical = display-minimum breach, over-capacity relief, or a store that will be out of stock on arrival. Sorted by dispatch date, then lowest cover — no hidden weights.</p></div>
-  ${queueHtml()}`;
-}
-
-function queueHtml() {
-  const total = S.acts.length, done = S.acts.filter((a) => S.dec[a.id]).length;
-  const pend = S.acts.filter((a) => !S.dec[a.id]).slice(0, 8);
-  return `<h2>Today's approval queue</h2>
-  <p class="lead">The ${pend.length} highest-priority moves still waiting for a decision. ${num(done)} of ${num(total)} reviewed. Open any row for the evidence and rule checks.</p>
-  <div class="progress"><i style="width:${(done / Math.max(total, 1)) * 100}%"></i></div>
-  <div class="tw"><table><thead><tr><th>Urgency</th><th>Move</th><th>Item</th><th>Route</th><th>Qty</th><th>Arrives</th><th>Cover</th><th>Value</th><th>Why (one line)</th><th>Decision</th></tr></thead><tbody>
-  ${pend.map(rowHtml).join("") || `<tr><td colspan="10" class="empty">Nothing pending. All moves reviewed.</td></tr>`}</tbody></table></div>
-  <p style="margin-top:14px"><button class="btn primary" data-go="register">Open the full register ${ico("arrow-right")}</button></p>`;
-}
-
-/* ------------------------------------------------------------ register */
 function filtered() {
   const f = S.f, q = f.q.trim().toLowerCase();
   let r = S.acts.filter((a) =>
@@ -136,8 +102,7 @@ function vRegister() {
   const slice = rows.slice(S.page * PAGE, S.page * PAGE + PAGE);
   const approved = S.acts.filter((a) => S.dec[a.id] === "approved").length, rejected = S.acts.filter((a) => S.dec[a.id] === "rejected").length;
   return `
-  ${isMobile() ? "" : `<h1>Action register</h1>
-  <p class="lead">Click any row for the evidence and rule checks behind it. Approve / reject is saved in this browser and included in the CSV export of the current view.</p>`}
+  <h1>All moves</h1><p class="lead">The individual moves behind each shipment. Open one for its evidence.</p>
   <div class="filters ${S.fopen ? "open" : ""}">
     <input type="search" id="f-q" placeholder="Search SKU, style, store…" value="${esc(f.q)}" aria-label="Search">
     <select id="f-type" aria-label="Type">${opts([["WH_TO_STORE", "Warehouse → Store"], ["STORE_TO_STORE", "Store → Store"], ["PULL_BACK", "Pull back"]], f.type, "All types")}</select>
@@ -154,7 +119,7 @@ function vRegister() {
     <button class="btn primary" id="f-export">Export view (${num(rows.length)})</button>
   </div>
   <div class="muted" style="font-size:.86rem">${num(rows.length)} of ${num(S.acts.length)} moves · ${approved} approved · ${rejected} rejected</div>
-  ${isMobile() ? (slice.map((a) => cardHtml(a, false)).join("") || `<div class="empty">No moves match these filters.</div>`) : `<div class="tw"><table><thead><tr><th>Urgency</th><th>Move</th><th>Item</th><th>Route</th><th>Qty</th><th>Arrives</th><th>Cover</th><th>Value</th><th>Why (one line)</th><th>Decision</th></tr></thead><tbody>
+  ${true ? (slice.map((a, i) => cardHtml(a, false, i)).join("") || `<div class="empty">No moves match these filters.</div>`) : `<div class="tw"><table><thead><tr><th>Urgency</th><th>Move</th><th>Item</th><th>Route</th><th>Qty</th><th>Arrives</th><th>Cover</th><th>Value</th><th>Why (one line)</th><th>Decision</th></tr></thead><tbody>
   ${slice.map(rowHtml).join("") || `<tr><td colspan="10" class="empty">No moves match these filters.</td></tr>`}
   </tbody></table></div>`}
   <div class="pager"><button class="btn" id="pg-prev" ${S.page === 0 ? "disabled" : ""}>← Prev</button> Page ${S.page + 1} / ${pages} <button class="btn" id="pg-next" ${S.page >= pages - 1 ? "disabled" : ""}>Next →</button></div>`;
@@ -302,21 +267,20 @@ async function vMethod() {
 
 document.querySelectorAll("[data-tab]").forEach((b) => b.addEventListener("click", () => setTab(b.dataset.tab)));
 document.querySelector("[data-more]").addEventListener("click", openMore);
-MQ.addEventListener("change", () => { if (S.ov) { $("#bar-title").textContent = isMobile() ? (MTITLES[S.tab] || TITLES[S.tab]) : TITLES[S.tab]; render(); } });
+MQ.addEventListener("change", () => { if (S.ov) render(); });
 $("#main").addEventListener("click", onMainClick);
 $("#scrim").addEventListener("click", closeDrawer);
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDrawer(); });
-boot(false);
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDrawer(); onKey(e); });
 
 /* ------------------------------------------------------------ hotspot map */
 const MAP = { prods: null, map: null, layer: null, sel: { category: "", style: "", size: "", metric: "demand" }, data: null };
 function vMapShell() {
-  return `<h1>Product hotspot map</h1><p class="lead">Pick a product (or a whole category) to see where demand is, which stores are short or overstocked after the plan, and the moves planned for it. Store positions are approximate city-centre placements: the data has cities, not coordinates.</p>
+  return `<h1>Map</h1><p class="lead">Pick a product to see where it is selling, where it is going next, and the top item at each stop.</p>
   <div class="filters"><select id="m-cat" aria-label="Category"></select><select id="m-style" aria-label="Style"></select><select id="m-size" aria-label="Size"></select>
   <select id="m-metric" aria-label="Metric"><option value="demand">Colour: cover after plan</option><option value="gap">Colour: unmet demand (gap)</option><option value="surplus">Colour: surplus stock</option></select></div>
   <div class="legend" id="m-legend"></div>
   <div class="maplayout"><div id="map" role="application" aria-label="Map of stores"></div><div class="card slist" id="m-list"><span class="muted">Loading…</span></div></div>
-  <p class="muted" style="font-size:.8rem">Circle size = forecast demand next 28 days. Lines: blue warehouse → store, purple store → store, grey pull-back (width = units). Map tiles © OpenStreetMap contributors.</p>`;
+  <p class="muted" style="font-size:.78rem;text-align:center">Circle size = demand in the next 28 days. Numbered pins = where the stock goes next, ranked by demand. Lines: blue warehouse to store, purple store to store, grey pull-back. Positions are approximate city centres. Map tiles © OpenStreetMap contributors.</p>`;
 }
 async function bindMap() {
   if (!MAP.prods) MAP.prods = await api("/api/map/products");
@@ -342,31 +306,33 @@ async function bindMap() {
   drawMap();
 }
 function metricColour(x, metric) {
-  if (metric === "gap") return x.gap_units <= 0 ? "#1d7a46" : x.gap_units < 5 ? "#e0a100" : "#b3261e";
-  if (metric === "surplus") return x.surplus_units <= 0 ? "#8a857c" : x.surplus_units < 5 ? "#6fa8dc" : "#1f5fa8";
-  const c = x.cover_after_days; return c === null ? "#8a857c" : c < 14 ? "#b3261e" : c < 30 ? "#e0a100" : c <= 90 ? "#1d7a46" : "#1f5fa8";
+  if (metric === "gap") return x.gap_units <= 0 ? "#62d3b6" : x.gap_units < 5 ? "#f0b35a" : "#ff7b72";
+  if (metric === "surplus") return x.surplus_units <= 0 ? "#8d9b99" : x.surplus_units < 5 ? "#a9cdfb" : "#86b9ff";
+  const c = x.cover_after_days; return c === null ? "#8d9b99" : c < 14 ? "#ff7b72" : c < 30 ? "#f0b35a" : c <= 90 ? "#62d3b6" : "#86b9ff";
 }
 async function drawMap() {
   const s = MAP.sel;
   const q = s.style ? `style=${encodeURIComponent(s.style)}${s.size ? "&size=" + encodeURIComponent(s.size) : ""}` : `category=${encodeURIComponent(s.category)}`;
   let d; try { d = await api("/api/map?" + q); } catch (e) { $("#m-list").innerHTML = `<div class="note">${esc(e.message)}</div>`; return; }
   MAP.data = d;
-  const legends = { demand: [["#b3261e", "cover < 14 d"], ["#e0a100", "14–30 d"], ["#1d7a46", "30–90 d"], ["#1f5fa8", "> 90 d (overstock)"], ["#8a857c", "no demand"]], gap: [["#b3261e", "gap ≥ 5 units"], ["#e0a100", "gap < 5"], ["#1d7a46", "covered"]], surplus: [["#1f5fa8", "surplus ≥ 5 units"], ["#6fa8dc", "< 5"], ["#8a857c", "none"]] };
+  const legends = { demand: [["#ff7b72", "cover < 14 d"], ["#f0b35a", "14–30 d"], ["#62d3b6", "30–90 d"], ["#86b9ff", "> 90 d (overstock)"], ["#8d9b99", "no demand"]], gap: [["#ff7b72", "gap ≥ 5 units"], ["#f0b35a", "gap < 5"], ["#62d3b6", "covered"]], surplus: [["#86b9ff", "surplus ≥ 5 units"], ["#a9cdfb", "< 5"], ["#8d9b99", "none"]] };
   $("#m-legend").innerHTML = legends[s.metric].map(([c, t]) => `<span><i style="background:${c}"></i>${t}</span>`).join("") + `<span class="muted">· cover after plan = stock incl. planned moves ÷ forecast daily demand</span>`;
-  const rank = [...d.stores].sort((a, b) => (s.metric === "gap" ? b.gap_units - a.gap_units : s.metric === "surplus" ? b.surplus_units - a.surplus_units : b.demand_28d - a.demand_28d));
-  $("#m-list").innerHTML = `<b>Stores, ranked by ${s.metric === "gap" ? "unmet demand" : s.metric === "surplus" ? "surplus" : "demand"}</b>` + rank.map((x) => `<div class="row" data-s="${x.store}"><span><span class="sku">${x.store}</span> <span class="muted">${esc(x.city)} · ${x.tier}</span></span><span class="num">${x.demand_28d.toFixed(1)} /28d · ${x.cover_after_days === null ? "∞" : x.cover_after_days.toFixed(0) + "d"} cover</span></div>`).join("") +
-    `<div class="row" style="cursor:default"><span><span class="sku">WH-KOL</span> <span class="muted">warehouse</span></span><span class="num">${d.warehouse.on_hand} on hand · ${d.warehouse.plan_out} sent</span></div>`;
+  const stops = d.next_stops || [];
+  $("#m-list").innerHTML = `<div class="eyebrow" style="margin-bottom:.6rem">Next stops, ranked by demand</div>` +
+    (stops.map((x) => `<div class="row" data-s="${x.store}"><span class="rk">${x.rank}</span><div class="rm"><b>${esc(x.city)} · ${esc(x.store)}</b><span>${num(x.incoming_units)} units arriving ${esc(x.arrival.slice(5))} · demand ${x.demand_28d.toFixed(0)} in 28 days</span><span>Top item: ${x.top_sku ? esc(x.top_sku.sku) + " (" + x.top_sku.demand_28d.toFixed(0) + " in 28 days)" : "—"}</span></div></div>`).join("") || '<div class="empty">No moves are planned for this product.</div>') +
+    `<div class="row" style="cursor:default"><span class="rk">W</span><div class="rm"><b>WH-KOL warehouse</b><span>${d.warehouse.on_hand} on hand · ${d.warehouse.plan_out} sent</span></div></div>`;
   if (typeof L === "undefined" || !MAP.layer) return;
   MAP.layer.clearLayers();
   const pos = {}; d.stores.forEach((x) => (pos[x.store] = [x.lat, x.lon])); pos["WH-KOL"] = [d.warehouse.lat, d.warehouse.lon];
   const agg = {};
   d.moves.forEach((m) => { const k = m.type + m.from + m.to; (agg[k] = agg[k] || { ...m, qty: 0 }).qty += m.qty; });
-  Object.values(agg).forEach((m) => { if (pos[m.from] && pos[m.to]) L.polyline([pos[m.from], pos[m.to]], { color: m.type === "WH_TO_STORE" ? "#1f5fa8" : m.type === "STORE_TO_STORE" ? "#7a3fa8" : "#8a857c", weight: Math.min(1 + Math.sqrt(m.qty) * 1.2, 9), opacity: .65, dashArray: m.type === "PULL_BACK" ? "6 6" : null }).bindTooltip(`${m.from} → ${m.to}: ${m.qty} units`).addTo(MAP.layer); });
+  Object.values(agg).forEach((m) => { if (pos[m.from] && pos[m.to]) L.polyline([pos[m.from], pos[m.to]], { color: m.type === "WH_TO_STORE" ? "#86b9ff" : m.type === "STORE_TO_STORE" ? "#7a3fa8" : "#8d9b99", weight: Math.min(1 + Math.sqrt(m.qty) * 1.2, 9), opacity: .65, dashArray: m.type === "PULL_BACK" ? "6 6" : null }).bindTooltip(`${m.from} → ${m.to}: ${m.qty} units`).addTo(MAP.layer); });
   const maxD = Math.max(...d.stores.map((x) => x.demand_28d), 1);
   d.stores.forEach((x) => {
     const r = 7 + 22 * Math.sqrt(x.demand_28d / maxD);
     L.circleMarker([x.lat, x.lon], { radius: r, color: "#222", weight: 1, fillColor: metricColour(x, s.metric), fillOpacity: .8 }).bindPopup(`<b>${x.store}</b> · ${esc(x.city)} (${x.tier})<br>Demand next 28d: <b>${x.demand_28d.toFixed(1)}</b> units<br>Stock now: ${x.stock} (+${x.plan_in} in, −${x.plan_out} out) → ${x.stock_after_plan}<br>Cover now / after plan: ${x.cover_days === null ? "∞" : x.cover_days.toFixed(0)}d / ${x.cover_after_days === null ? "∞" : x.cover_after_days.toFixed(0)}d<br>Gap after plan: ${x.gap_units} units · Surplus: ${x.surplus_units}`).addTo(MAP.layer);
   });
+  stops.forEach((x) => { const p = pos[x.store]; if (p) L.marker(p, { icon: L.divIcon({ className: "", html: `<div class="rankpin">${x.rank}</div>`, iconSize: [24, 24] }), keyboard: false }).bindPopup(`<b>#${x.rank} ${esc(x.city)} (${esc(x.store)})</b><br>${num(x.incoming_units)} units arriving ${esc(x.arrival)}<br>Top item: ${x.top_sku ? esc(x.top_sku.sku) + " · " + esc(x.top_sku.style) + " (" + x.top_sku.demand_28d.toFixed(0) + " in 28 days, " + x.top_sku.stock + " in stock)" : "—"}${x.top_incoming ? "<br>Largest delivery: " + esc(x.top_incoming.sku) + " × " + x.top_incoming.qty : ""}`).addTo(MAP.layer); });
   L.circleMarker(pos["WH-KOL"], { radius: 9, color: "#000", weight: 2, fillColor: "#fff", fillOpacity: 1 }).bindPopup(`<b>WH-KOL</b> warehouse<br>${d.warehouse.on_hand} on hand for this selection<br>${d.warehouse.plan_out} dispatched in plan`).addTo(MAP.layer);
   MAP.map.invalidateSize();
   const b = L.latLngBounds(Object.values(pos)); MAP.map.fitBounds(b.pad(0.15), { maxZoom: 7 });
@@ -400,11 +366,11 @@ async function vModel() {
 S.skip = new Set();
 const VERB = { WH_TO_STORE: "Send", STORE_TO_STORE: "Move", PULL_BACK: "Pull back" };
 function decide(id, d) { return setDecision(id, d); }
-function cardHtml(a, review) {
+function cardHtml(a, review, i = 0) {
   const d = S.dec[a.id];
   const cover = a.type === "PULL_BACK" ? "—" : cov(a.cover_before_days) + " → " + cov(a.cover_after_days);
   const approve = a.requires_approval ? "Sign off" : "Approve";
-  return `<article class="mcard" data-id="${a.id}" ${review ? "" : 'tabindex="0" role="button"'}>
+  return `<article class="mcard" style="--i:${Math.min(i, 12)}" data-id="${a.id}" ${review ? "" : 'tabindex="0" role="button"'}>
     <div class="mc-top"><span class="pill ${a.urgency}">${a.urgency}</span><span class="muted">${esc(a.type_label)} · ${esc(a.reason_label)}</span></div>
     <div style="margin-top:6px">${aiChip(a)} <span class="pill ok">Rules passed</span></div>
     <h3 class="mc-title">${VERB[a.type]} ${a.qty} × ${esc(a.sku_id)}</h3>
@@ -420,22 +386,6 @@ function cardHtml(a, review) {
     </div>
     ${review ? `<button class="mc-link" data-act="details">See why and the rules checked</button>` : ""}</article>`;
 }
-function vToday() {
-  const { summary: s, manifest: mf, validation: v } = S.ov;
-  const total = S.acts.length, done = S.acts.filter((a) => S.dec[a.id]).length;
-  const next = S.acts.find((a) => !S.dec[a.id] && !S.skip.has(a.id));
-  const passN = v.rules.filter((r) => r.passed).length;
-  const review = next ? `<div class="stepper"><span>${num(done)} of ${num(total)} reviewed</span><span>${num(total - done)} left</span></div><div class="progress"><i style="width:${(done / Math.max(total, 1)) * 100}%"></i></div>${cardHtml(next, true)}`
-    : `<div class="card"><b>${total - done > 0 ? "You skipped the rest for now." : "All caught up."}</b><p class="muted" style="margin:6px 0 0">${total - done > 0 ? "Skipped moves are still waiting in Moves." : "Every move has a decision. Export the list from More."}</p></div>`;
-  const hl = (s.highlights || []).slice(0, 4).map((h) => `<div class="card hl ${h.tone}" tabindex="0" role="button" data-go="${h.tab}" ${h.filter ? `data-f='${esc(JSON.stringify(h.filter))}'` : ""}>${ico("alert-triangle")}<div><b>${esc(h.title)}</b><p>${esc(h.text)}</p></div></div>`).join("");
-  return `${statusHtml(true)}<p class="lead" style="margin-bottom:12px">${num(total)} moves for ${esc(mf.dispatch_date)}. Review the next one below.</p>${review}
-  <h2>At a glance</h2><div class="grid kpis">
-   <div class="card kpi"><div class="v">${num(s.total.units)}</div><div class="l">Units to move</div></div>
-   <div class="card kpi"><div class="v">${num(s.needs_approval)}</div><div class="l">Need sign-off</div></div>
-   <div class="card kpi"><div class="v">${passN}/${v.rules.length}</div><div class="l">Rules pass</div></div>
-   <div class="card kpi"><div class="v">${lakh(s.total.value_mrp)}</div><div class="l">At MRP</div></div></div>
-  <h2>What NODAL found</h2><div class="grid">${hl}</div>`;
-}
 function onMainClick(e) {
   const btn = e.target.closest("button[data-act]");
   const card = e.target.closest(".mcard");
@@ -449,9 +399,11 @@ function onMainClick(e) {
 }
 
 /* ------------------------------------------------------------ decisions (server-side, audited) */
-function toast(msg) {
+function toast(msg, undo) {
   let t = $("#toast"); if (!t) { t = document.createElement("div"); t.id = "toast"; t.setAttribute("role", "status"); document.body.appendChild(t); }
-  t.textContent = msg; t.classList.add("on"); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove("on"), 4200);
+  t.innerHTML = `<span>${esc(msg)}</span>${undo ? '<button type="button">Undo</button>' : ""}`;
+  if (undo) t.querySelector("button").onclick = () => { t.classList.remove("on"); undo(); };
+  t.classList.add("on"); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove("on"), undo ? 7000 : 4200);
 }
 async function setDecision(id, decision, opts = {}) {
   if (!navigator.onLine) return toast("You are offline. Approvals need a connection.");
@@ -527,19 +479,6 @@ function ago(iso) {
   const s = (Date.now() - new Date(iso).getTime()) / 1000; if (!isFinite(s)) return "";
   return s < 90 ? "just now" : s < 5400 ? Math.round(s / 60) + " min ago" : s < 129600 ? Math.round(s / 3600) + " h ago" : Math.round(s / 86400) + " days ago";
 }
-function statusHtml(compact) {
-  const s = S.status; if (!s) return "";
-  const tile = (v, l, sub) => `<div class="card kpi"><div class="v">${v}</div><div class="l">${l}</div>${sub ? `<div class="s">${sub}</div>` : ""}</div>`;
-  const stale = (Date.now() - new Date(s.created_at).getTime()) > 36 * 3600 * 1000;
-  const tiles = compact ? [tile(num(s.awaiting), "Awaiting decision", `${num(s.approved)} approved · ${num(s.rejected)} rejected`), tile(num(s.needs_signoff), "Need sign-off", "above ₹1,00,000"),
-      tile(`${num(s.ai.reviews_completed)}`, "AI reviews", `${num(s.ai.flagged)} flagged · ${num(s.ai.alternatives)} alternatives`), tile(num(s.dq_warnings), "Data warnings", `${s.rules_passed}/${s.rules_total} rules pass`)]
-    : [tile(ago(s.created_at) || "—", "Latest run", `data as of ${esc(s.as_of)} · ${esc(s.automation.last_run_status || "")}`), tile(num(s.moves), "Moves proposed", `${num(s.units)} units · ${lakh(s.value_mrp)}`), tile(num(s.awaiting), "Awaiting decision", `${num(s.approved)} approved · ${num(s.rejected)} rejected`),
-      tile(num(s.needs_signoff), "Need sign-off", "above ₹1,00,000 at MRP"), tile(`${num(s.ai.reviews_completed)}`, "AI reviews done", `${num(s.ai.flagged)} flagged · ${num(s.ai.failed)} failed`), tile(num(s.ai.alternatives), "AI alternatives", "validated by NODAL"),
-      tile(num(s.dq_warnings), "Data warnings", `${s.rules_passed}/${s.rules_total} hard rules pass`), tile(esc(s.automation.last_run_status || "n/a"), "Automation", `daily ${esc(s.automation.schedule)} · AI ${esc(s.automation.ai_status || "n/a")}`)];
-  return `${stale ? `<div class="note">${ico("clock")} This plan is from ${esc(ago(s.created_at))}. A newer daily run has not been published yet.</div>` : ""}
-    <div class="grid kpis" style="margin-bottom:6px">${tiles.join("")}</div>
-    <p class="muted" style="font-size:12px;margin:0 0 14px">Approving records approval of the proposed plan. It does not dispatch any stock.</p>`;
-}
 function netBanner() {
   let b = $("#net"); if (!b) { b = document.createElement("div"); b.id = "net"; b.setAttribute("role", "status"); document.body.appendChild(b); }
   const off = !navigator.onLine, st = S.stale;
@@ -590,9 +529,10 @@ async function vHistory() {
 function openMore() {
   const d = $("#drawer");
   const row = (icon, label, m) => `<button class="sheet-row" data-m="${m}">${ico(icon)}<span>${label}</span></button>`;
-  d.innerHTML = `<button class="btn x" id="dx">${ico("x")}Close</button><h1 style="margin-top:0">More</h1>
-    ${row("shield-check", "Checks (rules and gaps)", "safety")}${row("calendar-clock", "Daily runs", "runs")}${row("history", "History", "history")}${row("database", "Data quality", "quality")}${row("line-chart", "Forecast model", "model")}${row("info", "How it works", "method")}
-    <a class="sheet-row" href="/api/export.csv">${ico("download")}<span>Export all moves (CSV)</span></a>`;
+  d.innerHTML = `<button class="btn x" id="dx">${ico("x")}<span>Close</span></button><h2 style="margin:0 0 .6rem">More</h2>
+    ${S.cap && S.cap.can_upload ? row("upload-cloud", "Add data", "data") : ""}${row("sparkles", "AI review", "ai")}${row("calendar-clock", "Daily runs", "runs")}${row("history", "History", "history")}
+    ${row("shield-check", "Rules and gaps", "safety")}${row("database", "Data quality", "quality")}${row("line-chart", "Forecast", "model")}${row("info", "How it works", "method")}
+    <a class="sheet-row" href="/api/export.csv">${ico("download")}<span>Export all moves</span></a>`;
   d.classList.add("open"); $("#scrim").classList.add("open"); d.setAttribute("aria-hidden", "false");
   $("#dx").onclick = closeDrawer;
   d.querySelectorAll("[data-m]").forEach((b) => b.addEventListener("click", () => { closeDrawer(); setTab(b.dataset.m); }));
@@ -600,3 +540,243 @@ function openMore() {
 
 /* ------------------------------------------------------------ PWA */
 if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => { /* PWA features are optional */ }));
+
+
+/* ============================================================ v3: shipments, quick decisions, Ask, Add data, intro */
+const money = (n) => (n >= 1e7 ? "₹" + (n / 1e7).toFixed(2) + " Cr" : n >= 1e5 ? "₹" + (n / 1e5).toFixed(1) + " L" : "₹" + num(n));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+S.skipShip = new Set(); S.chat = [];
+function gateNav() { document.querySelectorAll("[data-needs]").forEach((b) => { b.style.display = S.cap && S.cap[b.dataset.needs] ? "" : "none"; }); }
+const pendingShips = () => (S.ship || []).filter((s) => s.status === "pending" || s.status === "mixed");
+
+function shipCard(s) {
+  const noun = s.kind === "pullback" ? "Pull-back" : "Shipment";
+  return `<article class="ship glass" data-id="${esc(s.id)}">
+    <span class="pill ${s.urgency}">${s.urgency === "Critical" ? "Needs attention" : s.urgency === "High" ? "Important" : "Routine"}</span>
+    <div class="town">${esc(s.kind === "pullback" ? s.store + " pull-back" : s.city || s.store)}</div>
+    <div class="where">${s.kind === "pullback" ? "Take stock back from this store" : esc(s.store) + " · tier " + esc(s.tier || "")}</div>
+    <div class="big"><div><b data-count="${s.units}">${num(s.units)}</b><span>units</span></div><div><b>${money(s.value_mrp)}</b><span>value</span></div><div><b>${s.n_moves}</b><span>items</span></div></div>
+    <p class="why">${esc(s.summary)}</p>
+    <div>${s.needs_signoff ? `<span class="pill warn look">${s.needs_signoff} big item${s.needs_signoff > 1 ? "s" : ""} included</span> ` : ""}${s.ai_flagged ? `<span class="pill warn look">${s.ai_flagged} flagged by AI</span>` : ""}</div>
+    <div class="acts"><button class="round no" data-ship="rejected" aria-label="Reject ${noun}">${ico("x")}</button><button class="round" data-ship="skip" aria-label="Decide later">${ico("skip-forward")}</button><button class="round go" data-ship="approved" aria-label="Approve ${noun}">${ico("check")}</button></div>
+    <div><button class="link" data-ship="open">See what is inside</button></div>
+    <div class="hint">${isMobile() ? "Swipe right to approve · left to reject" : "Press → to approve · ← to reject · S to skip"}</div></article>`;
+}
+function qrow(s, i) {
+  return `<div class="qrow" style="--i:${i}" data-open="${esc(s.id)}" tabindex="0" role="button"><div class="qm"><b>${esc(s.kind === "pullback" ? s.store + " pull-back" : s.city || s.store)} · ${num(s.units)} units</b><span>${money(s.value_mrp)} · ${s.n_moves} items${s.needs_signoff ? " · " + s.needs_signoff + " big" : ""}</span></div>
+    <div class="mini"><button data-q="rejected" data-id="${esc(s.id)}" aria-label="Reject">${ico("x")}</button><button data-q="approved" data-id="${esc(s.id)}" class="ok" aria-label="Approve">${ico("check")}</button></div></div>`;
+}
+function vToday() {
+  const all = S.ship || [], pend = pendingShips();
+  const cur = pend.find((s) => !S.skipShip.has(s.id)) || null;
+  const rest = pend.filter((s) => s !== cur && !S.skipShip.has(s.id)).slice(0, 6);
+  const skipped = pend.filter((s) => S.skipShip.has(s.id));
+  const routine = pend.filter((s) => s.routine && !S.skipShip.has(s.id));
+  const hl = ((S.ov && S.ov.summary && S.ov.summary.highlights) || []);
+  const stale = S.status && Date.now() - new Date(S.status.created_at).getTime() > 36 * 3600 * 1000;
+  const reviewed = all.length - pend.length;
+  const stage = cur ? shipCard(cur) : `<div class="card" style="max-width:520px;width:100%"><h3 style="margin:0">${pend.length ? "You skipped the rest for now" : "All caught up"}</h3><p class="muted" style="margin:.5rem 0 0">${pend.length ? "Skipped shipments are waiting below." : "Every shipment has a decision. You can export the list from the top right."}</p>${skipped.length && !cur ? `<p><button class="btn" data-unskip>Review skipped</button></p>` : ""}</div>`;
+  return `${stale ? `<div class="note">This plan is from ${esc(ago(S.status.created_at))}. A newer daily run has not been published yet.</div>` : ""}
+    <h1>Today</h1><p class="lead" style="margin:.4rem auto .3rem">${all.length ? `${pend.length} of ${all.length} shipments to review` : "No plan has been published yet"}</p>
+    <div class="progress"><i style="width:${all.length ? (reviewed / all.length) * 100 : 0}%"></i></div>
+    <div class="stage">${stage}</div>
+    ${routine.length > 1 ? `<div style="text-align:center;margin:.4rem 0 1.2rem"><button class="btn" data-routine>${ico("check-check")}<span>Approve ${routine.length} routine shipments</span></button></div>` : ""}
+    ${rest.length ? `<div class="eyebrow" style="margin:1.4rem 0 .7rem">Up next</div><div class="queue">${rest.map(qrow).join("")}</div>` : ""}
+    ${skipped.length && cur ? `<div class="eyebrow" style="margin:1.4rem 0 .7rem">Skipped for now</div><div class="queue">${skipped.map(qrow).join("")}</div>` : ""}
+    ${hl.length ? `<details class="card" style="margin:1.6rem auto 0;max-width:640px"><summary>What NODAL noticed in the data</summary><div class="grid" style="margin-top:.6rem">${hl.map((h) => `<div class="hl" data-go="${h.tab}" ${h.filter ? `data-f='${esc(JSON.stringify(h.filter))}'` : ""}><div><b>${esc(h.title)}</b><p>${esc(h.text)}</p></div></div>`).join("")}</div></details>` : ""}`;
+}
+function countUps(root) {
+  root.querySelectorAll("[data-count]").forEach((el) => {
+    const to = Number(el.dataset.count); if (!isFinite(to) || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const t0 = performance.now(), D = 800;
+    const step = (t) => { const p = Math.min(1, (t - t0) / D), e = 1 - Math.pow(1 - p, 3); el.textContent = num(Math.round(to * e)); if (p < 1) requestAnimationFrame(step); };
+    requestAnimationFrame(step);
+  });
+}
+function bindToday(m) {
+  countUps(m);
+  m.querySelectorAll("[data-go]").forEach((el) => el.addEventListener("click", () => setTab(el.dataset.go, el.dataset.f ? JSON.parse(el.dataset.f) : null)));
+  const card = m.querySelector(".ship");
+  if (card) {
+    const id = card.dataset.id;
+    card.querySelectorAll("[data-ship]").forEach((b) => b.addEventListener("click", () => {
+      const a = b.dataset.ship;
+      if (a === "skip") { S.skipShip.add(id); render(); } else if (a === "open") openShipment(id); else decideShip(id, a, { card });
+    }));
+    bindSwipe(card, id);
+  }
+  m.querySelectorAll(".qrow").forEach((r) => {
+    r.addEventListener("click", (e) => { const q = e.target.closest("[data-q]"); if (q) { e.stopPropagation(); decideShip(q.dataset.id, q.dataset.q); } else openShipment(r.dataset.open); });
+    r.addEventListener("keydown", (e) => { if (e.key === "Enter") openShipment(r.dataset.open); });
+  });
+  const rt = m.querySelector("[data-routine]"); if (rt) rt.addEventListener("click", openRoutine);
+  const us = m.querySelector("[data-unskip]"); if (us) us.addEventListener("click", () => { S.skipShip.clear(); render(); });
+}
+function bindSwipe(el, id) {
+  let x0 = null, dx = 0;
+  el.addEventListener("pointerdown", (e) => { if (e.target.closest("button")) return; x0 = e.clientX; dx = 0; try { el.setPointerCapture(e.pointerId); } catch { /* */ } el.style.transition = "none"; });
+  el.addEventListener("pointermove", (e) => { if (x0 === null) return; dx = e.clientX - x0; el.style.transform = `translateX(${dx}px) rotate(${dx / 24}deg)`; el.style.opacity = String(1 - Math.min(Math.abs(dx) / 460, 0.5)); });
+  const end = () => { if (x0 === null) return; el.style.transition = ""; const d = dx; x0 = null; if (d > 110) decideShip(id, "approved", { card: el }); else if (d < -110) decideShip(id, "rejected", { card: el }); else { el.style.transform = ""; el.style.opacity = ""; } };
+  el.addEventListener("pointerup", end); el.addEventListener("pointercancel", end);
+}
+function onKey(e) {
+  if (S.tab !== "overview" || $("#drawer").classList.contains("open") || /INPUT|SELECT|TEXTAREA/.test((e.target.tagName || ""))) return;
+  const cur = pendingShips().find((s) => !S.skipShip.has(s.id)); if (!cur) return;
+  const card = $(".ship");
+  if (e.key === "ArrowRight" || e.key === "a") decideShip(cur.id, "approved", { card });
+  else if (e.key === "ArrowLeft" || e.key === "r") decideShip(cur.id, "rejected", { card });
+  else if (e.key === "s") { S.skipShip.add(cur.id); render(); }
+}
+async function decideShip(id, decision, opts = {}) {
+  if (!navigator.onLine) return toast("You are offline. Approvals need a connection.");
+  const card = opts.card, reset = () => { if (card) { card.classList.remove("fly-left", "fly-right"); card.style.transform = ""; card.style.opacity = ""; } };
+  const post = (confirmed) => fetch("/api/decisions/batch", { method: "POST", headers: { "Content-Type": "application/json", "X-Client-Id": clientId() }, body: JSON.stringify({ shipment_id: id, decision, confirm_high_value: confirmed }) });
+  try {
+    let r = await post(false);
+    if (r.status === 409) {
+      const j = await r.json();
+      if (!confirm(((j.detail && j.detail.message) || "This includes big items.") + "\n\nApproving records approval of the plan only. No stock is dispatched.")) { reset(); return; }
+      r = await post(true);
+    }
+    if (!r.ok) { let m = r.statusText; try { const j = await r.json(); m = typeof j.detail === "string" ? j.detail : (j.detail && j.detail.message) || m; } catch { /* */ } throw new Error(m); }
+    if (card && decision !== "cleared") { card.classList.add(decision === "approved" ? "fly-right" : "fly-left"); await sleep(320); }
+    const sh = (S.ship || []).find((s) => s.id === id);
+    S.ship = await api("/api/shipments"); await loadDec(); refreshStatus(); S.acts = await api("/api/actions");
+    render(); closeDrawer();
+    const label = sh ? (sh.kind === "pullback" ? sh.store + " pull-back" : sh.city || sh.store) : "Shipment";
+    if (decision === "cleared") toast("Decision undone.");
+    else toast(`${decision === "approved" ? "Approved" : "Rejected"}: ${label}. ${decision === "approved" ? "No stock is dispatched." : ""}`.trim(), () => decideShip(id, "cleared"));
+  } catch (e) { reset(); toast("Could not save: " + e.message); }
+}
+async function openRoutine() {
+  const r = pendingShips().filter((s) => s.routine && !S.skipShip.has(s.id));
+  const units = r.reduce((a, s) => a + s.units, 0), value = r.reduce((a, s) => a + s.value_mrp, 0), big = r.reduce((a, s) => a + s.needs_signoff, 0);
+  const d = $("#drawer");
+  d.innerHTML = `<button class="btn x" id="dx">${ico("x")}<span>Close</span></button><h2 style="margin:0 0 .4rem">Approve routine shipments</h2>
+    <p class="lead" style="margin:.2rem auto 1rem">These ${r.length} shipments have no AI flags, no low-confidence items and nothing critical.</p>
+    <div class="big" style="display:flex;justify-content:center;gap:2rem;margin:1rem 0"><div><b style="font-size:2rem;font-weight:200">${num(units)}</b><br><span class="muted">units</span></div><div><b style="font-size:2rem;font-weight:200">${money(value)}</b><br><span class="muted">value</span></div></div>
+    ${big ? `<div class="note">${big} items are above the ₹1,00,000 sign-off limit. Approving confirms them too.</div>` : ""}
+    <div class="mc-actions" style="justify-content:center"><button id="rt-go" class="go">${ico("check")}Approve all ${r.length}</button></div>
+    <p class="muted" style="font-size:.78rem">Approving records approval of the plan only. No stock is dispatched.</p>`;
+  d.classList.add("open"); $("#scrim").classList.add("open"); d.setAttribute("aria-hidden", "false");
+  $("#dx").onclick = closeDrawer;
+  $("#rt-go").onclick = async () => {
+    try {
+      const res = await fetch("/api/decisions/routine", { method: "POST", headers: { "Content-Type": "application/json", "X-Client-Id": clientId() }, body: JSON.stringify({ confirm_high_value: true }) });
+      if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
+      S.ship = await api("/api/shipments"); await loadDec(); refreshStatus(); closeDrawer(); render(); toast(`Approved ${r.length} routine shipments. No stock is dispatched.`);
+    } catch (e) { toast("Could not save: " + e.message); }
+  };
+}
+async function openShipment(id) {
+  const d = $("#drawer");
+  d.innerHTML = '<div class="loading">Loading…</div>'; d.classList.add("open"); $("#scrim").classList.add("open"); d.setAttribute("aria-hidden", "false");
+  let s; try { s = await api("/api/shipments/" + encodeURIComponent(id)); } catch (e) { d.innerHTML = `<div class="note">${esc(e.message)}</div>`; return; }
+  const lines = s.moves.map((m, i) => `<div class="qrow" style="--i:${Math.min(i, 8)}" data-move="${esc(m.id)}" tabindex="0" role="button"><div class="qm"><b>${m.qty} × ${esc(m.sku_id)}</b><span>${esc(m.style_name)} · size ${esc(m.size)} · from ${esc(m.source)} · arrives ${esc(m.arrival_date.slice(5))}</span></div><div>${aiChip(m)}${m.requires_approval ? ' <span class="pill warn">big</span>' : ""}</div></div>`);
+  d.innerHTML = `<button class="btn x" id="dx">${ico("x")}<span>Close</span></button>
+    <div class="eyebrow">${s.kind === "pullback" ? "Pull-back" : "Shipment"} · ${esc(s.store)}</div><h2 style="margin:.2rem 0 .6rem">${esc(s.city || s.store)}</h2>
+    <div class="say">${esc(s.summary)}<br><small class="faint">${s.summary_source === "local_ai" ? "Written by the local AI model" : "Standard wording"}</small></div>
+    <div style="display:flex;justify-content:center;gap:2rem;margin:1rem 0"><div><b style="font-size:1.8rem;font-weight:200">${num(s.units)}</b><br><span class="muted" style="font-size:.7rem;letter-spacing:.16em;text-transform:uppercase">units</span></div><div><b style="font-size:1.8rem;font-weight:200">${money(s.value_mrp)}</b><br><span class="muted" style="font-size:.7rem;letter-spacing:.16em;text-transform:uppercase">value</span></div><div><b style="font-size:1.8rem;font-weight:200">${s.moves.length}</b><br><span class="muted" style="font-size:.7rem;letter-spacing:.16em;text-transform:uppercase">items</span></div></div>
+    <div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap">${s.reasons.map((r) => `<span class="pill type" style="text-transform:none;letter-spacing:.04em">${r.items} ${esc(r.reason)}</span>`).join("")}</div>
+    <div class="dbar"><div class="mc-actions"><button data-sd="rejected" class="${s.status === "rejected" ? "on-r" : ""}">${ico("x")}Reject all</button><button data-sd="approved" class="${s.status === "approved" ? "on-a" : "go"}">${ico("check")}Approve all</button></div>
+      <p class="muted" style="font-size:.76rem;margin:.6rem 0 0">Approving records approval of the plan only. No stock is dispatched.${s.needs_signoff ? " Items above the sign-off limit are confirmed together." : ""}</p></div>
+    <h3>What is inside</h3><div class="queue" id="ship-lines">${lines.slice(0, 10).join("")}</div>
+    ${lines.length > 10 ? `<p><button class="link" id="ship-more">Show all ${lines.length} items</button></p>` : ""}`;
+  $("#dx").onclick = closeDrawer;
+  d.querySelectorAll("[data-sd]").forEach((b) => b.addEventListener("click", () => decideShip(id, b.dataset.sd)));
+  const bind = () => d.querySelectorAll("[data-move]").forEach((r) => { r.onclick = () => openDrawer(r.dataset.move); });
+  bind();
+  const more = $("#ship-more"); if (more) more.onclick = () => { $("#ship-lines").innerHTML = lines.join(""); more.remove(); bind(); };
+}
+
+/* ---------- Ask ---------- */
+function vAsk() {
+  return `<h1>Ask</h1><p class="lead">Ask about retail stock rules, or about a store in today's plan. General questions go to Sarvam AI with no company data. Questions about stores and moves are answered here from NODAL's own facts.</p>
+    <div class="chips" id="chips"></div><div class="chat" id="chat"></div>
+    <form class="ask-in" id="ask-form"><input id="ask-q" type="text" maxlength="300" placeholder="Ask a question…" aria-label="Your question" autocomplete="off"><button class="round go" style="width:50px;height:50px;flex:none" aria-label="Send">${ico("send")}</button></form>`;
+}
+const SRC = { sarvam: "Answered by Sarvam AI", cache: "From saved answers", plan: "From today's plan", local_ai: "From today's plan, written by the local AI" };
+function drawChat() {
+  const c = $("#chat"); if (!c) return;
+  c.innerHTML = S.chat.map((b) => b.role === "me" ? `<div class="bub me">${esc(b.text)}</div>` : b.typing ? `<div class="bub ai"><span class="typing"><i></i><i></i><i></i></span></div>` : `<div class="bub ai">${esc(b.text)}${b.source ? `<small>${esc(SRC[b.source] || b.source)}</small>` : ""}</div>`).join("");
+  c.lastElementChild && c.lastElementChild.scrollIntoView({ block: "nearest", behavior: "smooth" });
+}
+async function askQ(q) {
+  q = (q || "").trim(); if (q.length < 3) return;
+  S.chat.push({ role: "me", text: q }, { role: "ai", typing: true }); drawChat();
+  try {
+    const r = await fetch("/api/ask", { method: "POST", headers: { "Content-Type": "application/json", "X-Client-Id": clientId() }, body: JSON.stringify({ question: q }) });
+    const j = await r.json();
+    S.chat.pop();
+    S.chat.push({ role: "ai", text: r.ok ? j.answer : (typeof j.detail === "string" ? j.detail : "Sorry, that did not work."), source: r.ok ? j.source : null });
+  } catch { S.chat.pop(); S.chat.push({ role: "ai", text: "You seem to be offline. Questions need a connection." }); }
+  drawChat();
+}
+async function bindAsk() {
+  drawChat();
+  let sug = []; try { sug = await api("/api/ask/suggestions"); } catch { /* */ }
+  const ch = $("#chips"); if (ch) { ch.innerHTML = sug.map((s) => `<button class="chip" type="button">${esc(s)}</button>`).join(""); ch.querySelectorAll(".chip").forEach((b) => b.addEventListener("click", () => askQ(b.textContent))); }
+  $("#ask-form").addEventListener("submit", (e) => { e.preventDefault(); const i = $("#ask-q"); const q = i.value; i.value = ""; askQ(q); });
+}
+
+/* ---------- Add data (local only) ---------- */
+const STAGE_LABEL = { ingest_validate: "Checking the files", snapshot: "Saving a snapshot", forecast_allocate_validate: "Forecasting and planning", alternative_candidates: "Looking for alternatives", ai_review: "AI review", simple_summaries: "Writing plain summaries", publish: "Publishing the plan" };
+async function vData() {
+  const m = $("#main"); m.innerHTML = '<div class="loading">Loading…</div>';
+  let inb; try { inb = await api("/api/inbox"); } catch (e) { m.innerHTML = `<h1>Add data</h1><div class="note">${esc(e.message)}</div>`; return; }
+  const draw = (inb) => {
+    m.innerHTML = `<h1>Add data</h1><p class="lead">Drop new CSV files here. Any file you add replaces the matching supplied file; the rest stay as supplied. Then press Calculate.</p>
+      <div class="drop" id="drop" tabindex="0" role="button">${ico("upload-cloud")}<p><b>Drop CSV files here</b></p><p>or tap to choose. Name each file after its table, for example <code>stock_snapshot.csv</code>.</p><input id="pick" type="file" accept=".csv,text/csv" multiple hidden></div>
+      <div class="files">${inb.files.map((f) => `<div class="frow ${f.state === "uploaded" ? "up" : ""}"><span>${esc(f.name)}</span>${f.state === "uploaded" ? `<span>new</span><button data-rm="${esc(f.name)}" aria-label="Remove ${esc(f.name)}">${ico("x")}</button>` : `<span class="faint">supplied</span>`}</div>`).join("")}</div>
+      <div style="text-align:center;margin:1.4rem 0"><button class="btn primary" id="calc" ${inb.job.running ? "disabled" : ""}><span>${inb.job.running ? "Calculating…" : "Calculate"}</span></button><p class="muted" style="font-size:.8rem;margin:.6rem 0 0">Uses: ${esc(inb.dataset)}</p></div>
+      <div id="prog"></div>`;
+    const drop = $("#drop"), pick = $("#pick");
+    drop.addEventListener("click", () => pick.click());
+    ["dragenter", "dragover"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+    ["dragleave", "drop"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
+    drop.addEventListener("drop", (e) => upload([...e.dataTransfer.files]));
+    pick.addEventListener("change", () => upload([...pick.files]));
+    m.querySelectorAll("[data-rm]").forEach((b) => b.addEventListener("click", async () => { await fetch("/api/inbox/" + b.dataset.rm, { method: "DELETE" }); draw(await api("/api/inbox")); }));
+    $("#calc").addEventListener("click", startCalc);
+    if (inb.job.running) poll();
+  };
+  const upload = async (files) => {
+    const msgs = [];
+    for (const f of files) {
+      const name = f.name.replace(/\.csv$/i, "");
+      const r = await fetch("/api/inbox/" + encodeURIComponent(name), { method: "PUT", body: await f.arrayBuffer() });
+      if (!r.ok) { let t = "failed"; try { const j = await r.json(); t = j.detail.problems ? j.detail.problems.join("; ") : j.detail; } catch { /* */ } msgs.push(`${name}: ${t}`); }
+    }
+    draw(await api("/api/inbox"));
+    toast(msgs.length ? msgs.join(" · ") : `${files.length} file${files.length > 1 ? "s" : ""} added. Press Calculate.`);
+  };
+  const startCalc = async () => {
+    const r = await fetch("/api/pipeline/run", { method: "POST" });
+    if (!r.ok) { toast((await r.json()).detail || "Could not start."); return; }
+    $("#calc").disabled = true; $("#calc span").textContent = "Calculating…"; poll();
+  };
+  const poll = async () => {
+    const box = $("#prog"); if (!box) return;
+    const s = await api("/api/pipeline/status");
+    const st = (s.run && s.run.stages) || {};
+    box.innerHTML = `<div class="stagelist">${Object.keys(STAGE_LABEL).map((k) => { const v = st[k]; const cls = !v ? "" : v.status === "completed" ? "done" : v.status === "failed" ? "run" : "run"; return `<div class="stg ${cls}">${ico(!v ? "circle" : v.status === "completed" ? "check-circle-2" : "loader-2")}<span>${STAGE_LABEL[k]}</span></div>`; }).join("")}</div>`;
+    if (s.running) { setTimeout(poll, 1500); return; }
+    if (s.result) {
+      const ok = ["completed", "partial"].includes(s.result.status);
+      box.innerHTML += `<div class="note">${ok ? "Done. The new plan is ready." : s.result.status === "skipped_duplicate" ? "These files are identical to a plan that already exists, so nothing changed." : "The calculation stopped: " + esc(s.result.error || s.result.status)}</div>`;
+      if (ok) { await boot(false); toast("New plan ready."); setTab("overview"); }
+    }
+  };
+  draw(inb);
+}
+
+/* ---------- intro: the logo draws itself, then dissolves into the app ---------- */
+(function splash() {
+  const el = $("#splash"); if (!el) return;
+  let seen = false; try { seen = !!sessionStorage.getItem("nodal-splash"); } catch { /* */ }
+  if (seen || matchMedia("(prefers-reduced-motion: reduce)").matches) { el.remove(); return; }
+  const done = () => { el.classList.add("out"); setTimeout(() => el.remove(), 1000); try { sessionStorage.setItem("nodal-splash", "1"); } catch { /* */ } };
+  setTimeout(done, 3300); el.addEventListener("click", done); document.addEventListener("keydown", done, { once: true });
+})();
+
+boot(false);

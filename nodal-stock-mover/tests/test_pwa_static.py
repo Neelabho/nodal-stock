@@ -39,7 +39,7 @@ def test_service_worker_never_caches_or_replays_writes_and_flags_stale_data():
 
 def test_tab_bar_has_at_most_five_items_and_touch_targets_are_44px():
     html = (FE / "index.html").read_text()
-    bar = re.search(r'<nav class="tabbar".*?</nav>', html, re.S).group(0)
+    bar = re.search(r'<nav class="tabbar.*?</nav>', html, re.S).group(0)
     assert len(re.findall(r"<button", bar)) <= 5                      # Apple HIG: few tabs
     css = (FE / "styles.css").read_text()
     assert "min-height:52px" in css and "min-height:48px" in css and "min-height:44px" in css
@@ -47,9 +47,22 @@ def test_tab_bar_has_at_most_five_items_and_touch_targets_are_44px():
     assert "-webkit-text-size-adjust:100%" in css
 
 
-def test_no_gradients_or_shadows_in_the_flat_design():
+def test_design_direction_glass_over_blurred_solid_light_no_gradients_thin_lining_type():
     css = re.sub(r"/\*.*?\*/", "", (FE / "styles.css").read_text(), flags=re.S)       # ignore comments
-    assert "gradient" not in css and "box-shadow" not in css and "text-shadow" not in css
+    assert "gradient" not in css                                       # glow comes from blurred SOLID blobs, never gradient fills
+    assert "backdrop-filter" in css and "filter:blur(90px)" in css and ".blob" in css
+    assert not re.search(r"box-shadow:\s*(?!inset)[0-9]", css)         # only inset rim light; no drop shadows
+    assert "Outfit" in css and "lining-nums" in css and "font-weight:200" in css
+    assert "prefers-reduced-motion" in css                             # animations respect the setting
+    html = (FE / "index.html").read_text()
+    assert "Outfit" in html and "Rufina" not in html and 'id="splash"' in html
+
+
+def test_red_is_reserved_for_critical():
+    css = re.sub(r"/\*.*?\*/", "", (FE / "styles.css").read_text(), flags=re.S)
+    uses = re.findall(r"var\(--critical(?:-soft)?\)", css)
+    assert len(uses) <= 8                                              # a handful of critical-only uses (pill, hover on reject, toast-free)
+    assert ".pill.Critical" in css
 
 
 def test_approvals_require_a_network_and_explain_no_dispatch():

@@ -3,59 +3,74 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#852201">
+<meta name="theme-color" content="#0d1214">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="NODAL">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
 <title>NODAL — Stock Mover</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='4' fill='%23852201'/%3E%3Ccircle cx='9' cy='9' r='3' fill='%23fff'/%3E%3Ccircle cx='23' cy='11' r='3' fill='%23fff'/%3E%3Ccircle cx='15' cy='23' r='3' fill='%23fff'/%3E%3Cpath d='M9 9L23 11L15 23Z' stroke='%23fff' fill='none' stroke-width='1.5'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%230d1214'/%3E%3Cpath d='M9 9L23 11L15 23Z' stroke='%23e6b655' fill='none' stroke-width='1.2'/%3E%3Ccircle cx='9' cy='9' r='2.4' fill='%23e6b655'/%3E%3Ccircle cx='23' cy='11' r='2.4' fill='%23e6b655'/%3E%3Ccircle cx='15' cy='23' r='2.4' fill='%23e6b655'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600&family=Rufina:wght@400;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@200;300;400;500&display=swap">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
 <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
+<div class="blobs" aria-hidden="true"><i class="blob b1"></i><i class="blob b2"></i><i class="blob b3"></i><i class="blob b4"></i></div>
+
+<div id="splash" aria-hidden="true">
+  <div class="splash-in">
+    <svg viewBox="0 0 64 64" class="splash-logo" aria-hidden="true">
+      <path class="sl-line" d="M16 16 L48 20 L30 50 Z" pathLength="1"/>
+      <circle class="sl-node n1" cx="16" cy="16" r="4"/><circle class="sl-node n2" cx="48" cy="20" r="4"/><circle class="sl-node n3" cx="30" cy="50" r="4"/>
+    </svg>
+    <div class="splash-word">NODAL</div>
+    <div class="splash-tag">Right stock. Right store. Right size.</div>
+  </div>
+</div>
+
 <div class="app">
-  <aside class="side">
+  <aside class="side glass">
     <div class="brand">
-      <svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true"><rect width="32" height="32" rx="4" fill="var(--accent)"/><circle cx="9" cy="9" r="3" fill="#fff"/><circle cx="23" cy="11" r="3" fill="#fff"/><circle cx="15" cy="23" r="3" fill="#fff"/><path d="M9 9L23 11L15 23Z" stroke="#fff" fill="none" stroke-width="1.5"/></svg>
-      <div class="brand-t"><b>NODAL</b><span>Stock Mover</span></div>
+      <svg viewBox="0 0 64 64" width="28" height="28" aria-hidden="true"><path d="M16 16 L48 20 L30 50 Z" fill="none" stroke="var(--accent)" stroke-width="2.2" stroke-linejoin="round"/><circle cx="16" cy="16" r="4.5" fill="var(--accent)"/><circle cx="48" cy="20" r="4.5" fill="var(--accent)"/><circle cx="30" cy="50" r="4.5" fill="var(--accent)"/></svg>
+      <b>NODAL</b>
     </div>
     <nav class="tabs" role="tablist" aria-label="Views">
-      <button data-tab="overview" class="on"><i data-lucide="layout-dashboard"></i><span>Overview</span></button>
-      <button data-tab="register"><i data-lucide="list-checks"></i><span>Action register</span></button>
-      <button data-tab="ai"><i data-lucide="sparkles"></i><span>AI Intelligence</span></button>
-      <button data-tab="map"><i data-lucide="map-pin"></i><span>Hotspot map</span></button>
-      <button data-tab="runs"><i data-lucide="calendar-clock"></i><span>Daily runs</span></button>
-      <button data-tab="history"><i data-lucide="history"></i><span>History</span></button>
-      <button data-tab="safety"><i data-lucide="shield-check"></i><span>Rules &amp; gaps</span></button>
-      <button data-tab="quality"><i data-lucide="database"></i><span>Data quality</span></button>
-      <button data-tab="model"><i data-lucide="line-chart"></i><span>Forecast model</span></button>
-      <button data-tab="method"><i data-lucide="info"></i><span>Method</span></button>
+      <button data-tab="overview" class="on"><i data-lucide="layout-dashboard"></i><span>Today</span></button>
+      <button data-tab="register"><i data-lucide="list-checks"></i><span>All moves</span></button>
+      <button data-tab="map"><i data-lucide="map-pin"></i><span>Map</span></button>
+      <button data-tab="ask"><i data-lucide="message-circle"></i><span>Ask</span></button>
+      <button data-tab="data" data-needs="can_upload"><i data-lucide="upload-cloud"></i><span>Add data</span></button>
+      <details class="adv"><summary><i data-lucide="more-horizontal"></i><span>Advanced</span></summary>
+        <button data-tab="ai"><i data-lucide="sparkles"></i><span>AI review</span></button>
+        <button data-tab="runs"><i data-lucide="calendar-clock"></i><span>Daily runs</span></button>
+        <button data-tab="history"><i data-lucide="history"></i><span>History</span></button>
+        <button data-tab="safety"><i data-lucide="shield-check"></i><span>Rules &amp; gaps</span></button>
+        <button data-tab="quality"><i data-lucide="database"></i><span>Data quality</span></button>
+        <button data-tab="model"><i data-lucide="line-chart"></i><span>Forecast</span></button>
+        <button data-tab="method"><i data-lucide="info"></i><span>Method</span></button>
+      </details>
     </nav>
     <div class="side-foot muted" id="asof"></div>
   </aside>
   <div class="content">
     <header class="bar">
-      <div class="bar-t" id="bar-title">Overview</div>
-      <div class="bar-r">
-        <a id="btn-csv" class="btn primary" href="/api/export.csv"><i data-lucide="download"></i><span>Export CSV</span></a>
-      </div>
+      <div class="bar-t" id="bar-title">Today</div>
+      <div class="bar-r"><a id="btn-csv" class="btn ghost" href="/api/export.csv"><i data-lucide="download"></i><span>Export</span></a></div>
     </header>
-    <main id="main"><div class="loading">Running the engine on the Manyavar data…</div></main>
+    <main id="main"><div class="loading">Loading today's plan…</div></main>
   </div>
 </div>
-<nav class="tabbar" aria-label="Main">
+<nav class="tabbar glass" aria-label="Main">
   <button data-tab="overview" class="on"><i data-lucide="layout-dashboard"></i><span>Today</span></button>
   <button data-tab="register"><i data-lucide="list-checks"></i><span>Moves</span></button>
   <button data-tab="map"><i data-lucide="map-pin"></i><span>Map</span></button>
-  <button data-tab="ai"><i data-lucide="sparkles"></i><span>AI</span></button>
+  <button data-tab="ask"><i data-lucide="message-circle"></i><span>Ask</span></button>
   <button data-more="1"><i data-lucide="more-horizontal"></i><span>More</span></button>
 </nav>
-<aside id="drawer" class="drawer" aria-hidden="true"></aside>
+<aside id="drawer" class="drawer glass" aria-hidden="true"></aside>
 <div id="scrim" class="scrim"></div>
 <script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
