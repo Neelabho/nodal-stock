@@ -108,4 +108,4 @@ def test_moves_screen_has_the_two_switchable_sections_and_shortage_cards_have_th
     assert 'data-mv="moves"' in js and 'data-mv="shortages"' in js and "Planned moves" in js and "Shortages" in js
     assert "function vShortages" in js and "async function openShortage" in js and "Suggested action" in js
     assert 'card.dataset.sid) return' in js                             # regression: the move-card handler used to hijack shortage cards
-    assert "Written by Sarvam AI" in js and "Written by the local AI" in js    # the source of every AI text is shown
+    assert "Written by Sarvam AI" in js and "Standard wording" in js    # the source of every AI text is shown
