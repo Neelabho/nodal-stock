@@ -1,6 +1,6 @@
 # NODAL — Initial Analysis (Brief B: Stock Mover)
 
-Sources read: original PDF `manyavar-vch3-data/2b6d36a5-71ed-4792-beac-68ef31bb2822.pdf` (byte-identical to `briefs/B_Stock_Mover_brief.pdf`), the data pack README, `data_dictionary.csv`, all 17 CSVs, `CLAUDE.md`, the operator skill, the kit docs. All numbers below were computed from the supplied CSVs (audit scripts: `backend/nodal/audit.py`, re-runnable; output in `docs/DATA_AUDIT.json` once generated).
+Sources read: original PDF `manyavar-vch3-data/2b6d36a5-71ed-4792-beac-68ef31bb2822.pdf` (byte-identical to `briefs/B_Stock_Mover_brief.pdf`), the data pack README, `data_dictionary.csv`, all 17 CSVs, `CLAUDE.md`, the operator skill, the kit docs. All numbers below were computed from the supplied CSVs (audit code: `backend/nodal/audit.py`, re-runnable; output in `docs/DATA_AUDIT.json`).
 
 ## 1. Brief B — the exact problem
 
@@ -110,12 +110,12 @@ Plan date = day after snapshot (dispatch 1 Nov 2026); arrival = dispatch + lead 
 
 ```
 nodal-stock-mover/
-  README.md  requirements.txt  run.sh  .gitignore
-  backend/nodal/ {policy, loader, audit, velocity, ledger, allocate, validate, explain, api}.py
+  README.md  requirements.txt  run.sh
+  backend/nodal/ {policy, loader, audit, velocity, allocate, validate, engine, api, cli}.py
   frontend/ {index.html, app.js, styles.css}
-  data/            # derived outputs only (git-ignored); sources stay in manyavar-vch3-data/
-  docs/ {INITIAL_ANALYSIS.md, ARCHITECTURE.md (if needed), DATA_AUDIT.json}
-  tests/           # pytest: invariants on real data + unit tests
+  data/            # derived outputs only (git-ignored); source CSVs stay in manyavar-vch3-data/ (not committed)
+  docs/ {INITIAL_ANALYSIS.md, DATA_AUDIT.json}
+  tests/           # pytest on the real data: invariants, traceability, determinism, tamper detection
 ```
 
 ## 8. Roadmap

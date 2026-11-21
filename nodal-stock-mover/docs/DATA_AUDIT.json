@@ -1,0 +1,323 @@
+{
+ "as_of": "2026-10-31",
+ "source_hash": "005df9366011b608",
+ "tables": [
+  {
+   "table": "stores",
+   "rows": 20,
+   "columns": 9,
+   "blank_cells": {},
+   "duplicate_rows": 0
+  },
+  {
+   "table": "items",
+   "rows": 385,
+   "columns": 11,
+   "blank_cells": {
+    "launch_date": 3
+   },
+   "duplicate_rows": 0
+  },
+  {
+   "table": "bills",
+   "rows": 90805,
+   "columns": 5,
+   "blank_cells": {},
+   "duplicate_rows": 0
+  },
+  {
+   "table": "bill_lines",
+   "rows": 259772,
+   "columns": 5,
+   "blank_cells": {},
+   "duplicate_rows": 0
+  },
+  {
+   "table": "stock_snapshot",
+   "rows": 3547,
+   "columns": 7,
+   "blank_cells": {
+    "in_transit_arrives_on": 3503,
+    "oldest_stock_received_on": 28
+   },
+   "duplicate_rows": 0
+  },
+  {
+   "table": "stock_weekly",
+   "rows": 61416,
+   "columns": 5,
+   "blank_cells": {},
+   "duplicate_rows": 0
+  },
+  {
+   "table": "warehouse_inbound",
+   "rows": 768,
+   "columns": 4,
+   "blank_cells": {},
+   "duplicate_rows": 0
+  },
+  {
+   "table": "calendar",
+   "rows": 2373,
+   "columns": 4,
+   "blank_cells": {
+    "festival": 2329
+   },
+   "duplicate_rows": 0
+  },
+  {
+   "table": "rules",
+   "rows": 8,
+   "columns": 2,
+   "blank_cells": {},
+   "duplicate_rows": 0
+  },
+  {
+   "table": "min_display",
+   "rows": 24,
+   "columns": 3,
+   "blank_cells": {},
+   "duplicate_rows": 0
+  },
+  {
+   "table": "lead_times",
+   "rows": 6,
+   "columns": 2,
+   "blank_cells": {},
+   "duplicate_rows": 0
+  },
+  {
+   "table": "flagship_protected",
+   "rows": 80,
+   "columns": 3,
+   "blank_cells": {},
+   "duplicate_rows": 0
+  }
+ ],
+ "findings": [
+  {
+   "severity": "ok",
+   "table": "stores",
+   "check": "duplicate key ['store_id']",
+   "count": 0,
+   "detail": "No duplicate keys.",
+   "handling": "none needed"
+  },
+  {
+   "severity": "ok",
+   "table": "items",
+   "check": "duplicate key ['sku_id']",
+   "count": 0,
+   "detail": "No duplicate keys.",
+   "handling": "none needed"
+  },
+  {
+   "severity": "ok",
+   "table": "bills",
+   "check": "duplicate key ['bill_id']",
+   "count": 0,
+   "detail": "No duplicate keys.",
+   "handling": "none needed"
+  },
+  {
+   "severity": "ok",
+   "table": "stock_snapshot",
+   "check": "duplicate key ['location_id', 'sku_id']",
+   "count": 0,
+   "detail": "No duplicate keys.",
+   "handling": "none needed"
+  },
+  {
+   "severity": "ok",
+   "table": "stock_weekly",
+   "check": "duplicate key ['week_ending', 'store_id', 'sku_id']",
+   "count": 0,
+   "detail": "No duplicate keys.",
+   "handling": "none needed"
+  },
+  {
+   "severity": "ok",
+   "table": "warehouse_inbound",
+   "check": "duplicate key ['expected_date', 'sku_id']",
+   "count": 0,
+   "detail": "No duplicate keys.",
+   "handling": "none needed"
+  },
+  {
+   "severity": "ok",
+   "table": "bill_lines",
+   "check": "orphan keys bill_lines.bill_id -> bills",
+   "count": 0,
+   "detail": "All keys resolve.",
+   "handling": "none needed"
+  },
+  {
+   "severity": "ok",
+   "table": "bill_lines",
+   "check": "orphan keys bill_lines.sku_id -> items",
+   "count": 0,
+   "detail": "All keys resolve.",
+   "handling": "none needed"
+  },
+  {
+   "severity": "ok",
+   "table": "bills",
+   "check": "orphan keys bills.store_id -> stores",
+   "count": 0,
+   "detail": "All keys resolve.",
+   "handling": "none needed"
+  },
+  {
+   "severity": "ok",
+   "table": "stock_snapshot",
+   "check": "orphan keys stock_snapshot.sku_id -> items",
+   "count": 0,
+   "detail": "All keys resolve.",
+   "handling": "none needed"
+  },
+  {
+   "severity": "ok",
+   "table": "stock_weekly",
+   "check": "orphan keys stock_weekly.sku_id -> items",
+   "count": 0,
+   "detail": "All keys resolve.",
+   "handling": "none needed"
+  },
+  {
+   "severity": "ok",
+   "table": "warehouse_inbound",
+   "check": "orphan keys warehouse_inbound.sku_id -> items",
+   "count": 0,
+   "detail": "All keys resolve.",
+   "handling": "none needed"
+  },
+  {
+   "severity": "ok",
+   "table": "flagship_protected",
+   "check": "orphan keys flagship_protected.style_id -> items",
+   "count": 0,
+   "detail": "All keys resolve.",
+   "handling": "none needed"
+  },
+  {
+   "severity": "error",
+   "table": "stock_snapshot",
+   "check": "negative on_hand",
+   "count": 1,
+   "detail": "MYS-02/KUR-02-M = -4",
+   "handling": "contradictory position EXCLUDED from every action (never a donor or recipient)"
+  },
+  {
+   "severity": "error",
+   "table": "stock_snapshot",
+   "check": "store above stock capacity",
+   "count": 1,
+   "detail": "KNP-03: 520 units vs capacity 250 (+270)",
+   "handling": "no receipts allowed; excess is a pull-back / transfer candidate"
+  },
+  {
+   "severity": "error",
+   "table": "stock_snapshot x min_display",
+   "check": "category below minimum display",
+   "count": 2,
+   "detail": "MZF-01 Mojari: 5 < 8; BLR-05 Sherwani: 2 < 5",
+   "handling": "display-minimum fills are generated first"
+  },
+  {
+   "severity": "ok",
+   "table": "stock_snapshot",
+   "check": "in_transit>0 without arrival date",
+   "count": 0,
+   "detail": "none",
+   "handling": "treated as arriving on plan date"
+  },
+  {
+   "severity": "info",
+   "table": "stock_snapshot",
+   "check": "units in transit (counted once, as arriving)",
+   "count": 55,
+   "detail": "44 positions, arrivals ['2026-11-01', '2026-11-02']",
+   "handling": "counted as stock at destination from arrival date; never dispatched again; never donated"
+  },
+  {
+   "severity": "ok",
+   "table": "stock_weekly vs stock_snapshot",
+   "check": "last week closing_on_hand != snapshot on_hand",
+   "count": 2,
+   "detail": "3407 shared positions",
+   "handling": "snapshot is used as the stock position; weekly is used for availability only"
+  },
+  {
+   "severity": "info",
+   "table": "stock_weekly",
+   "check": "positions not in stock the full 12 weeks",
+   "count": 2936,
+   "detail": "5235 store x SKU pairs; 1354 never in stock",
+   "handling": "velocity = units / in-stock days, not units / calendar days (stock-out censoring)"
+  },
+  {
+   "severity": "info",
+   "table": "bill_lines",
+   "check": "return/void/negative quantity markers",
+   "count": 0,
+   "detail": "quantity values: 1:257596, 2:2153, 3:23",
+   "handling": "LIMITATION: returns/cancellations are not identifiable in this data; velocity is gross sales"
+  },
+  {
+   "severity": "info",
+   "table": "items",
+   "check": "packaging SKUs (Rs 0, not products)",
+   "count": 3,
+   "detail": "PKG-BAG, PKG-COVER, PKG-BOX",
+   "handling": "excluded from velocity, stock, and actions"
+  },
+  {
+   "severity": "warn",
+   "table": "stores",
+   "check": "store opened inside velocity window",
+   "count": 1,
+   "detail": "BLR-05 opened 2026-10-10",
+   "handling": "window starts at opening date; peer-based estimate with low confidence"
+  },
+  {
+   "severity": "warn",
+   "table": "stock_snapshot",
+   "check": "SKUs sold in last 90 days with no warehouse stock",
+   "count": 147,
+   "detail": "140 SKUs at warehouse, 15407 units",
+   "handling": "supply is scarce: water-filling allocation; store-to-store sources considered"
+  },
+  {
+   "severity": "info",
+   "table": "warehouse_inbound",
+   "check": "inbound statuses",
+   "count": 768,
+   "detail": "status values: Planned:768; 19526 units, 2026-11-01 to 2026-12-16",
+   "handling": "LIMITATION: only 'Planned' - treated as scheduled supply usable on/after expected date, shown as scheduled"
+  },
+  {
+   "severity": "info",
+   "table": "lead_times",
+   "check": "route sentences parsed",
+   "count": 6,
+   "detail": "warehouse->store {'East': 3, 'North': 4, 'South': 6}; store->store {'same_city': 2, 'same_zone': 4, 'diff_zone': 7}",
+   "handling": "structured lead-time rules"
+  },
+  {
+   "severity": "info",
+   "table": "min_display",
+   "check": "category mapping",
+   "count": 9,
+   "detail": "Safa->Accessories (Safa/Mala/Stole); Mala->Accessories (Safa/Mala/Stole); Stole->Accessories (Safa/Mala/Stole)",
+   "handling": "item categories summed into min_display categories"
+  },
+  {
+   "severity": "info",
+   "table": "flagship_protected",
+   "check": "protected styles",
+   "count": 80,
+   "detail": "S++ stores: BLR-01, BLR-02, LKO-01, PAT-01",
+   "handling": "protected styles never leave their S++ store"
+  }
+ ]
+}
