@@ -163,3 +163,14 @@ def test_map_next_stops_are_ranked_by_demand_and_show_the_top_sku():
     for s in stops:
         assert s["incoming_units"] > 0 and s["arrival"] and s["top_sku"]["sku"].startswith("KUR")
         assert s["top_sku"]["demand_28d"] <= s["demand_28d"] + 1e-6       # the top SKU cannot out-demand its store total
+
+
+def test_every_move_has_the_same_seven_explanation_rows_and_keeps_the_one_line_version(result):
+    from nodal.engine import ROW_ORDER
+    for a in result["actions"]:
+        rows = a["explanation_lines"]
+        assert [r["label"] for r in rows] == list(ROW_ORDER)                      # identical structure for every move type
+        assert all(r["text"].strip() and "?" not in r["text"] for r in rows), (a["id"], rows)
+        d = {r["label"]: r["text"] for r in rows}
+        assert f"{a['qty']} × {a['sku_id']}" in d["Move"] and d["Route"] == f"{a['source']} → {a['destination']}"
+        assert a["explanation"] and "\n" not in a["explanation"]                  # the brief's one-line explanation is still there (CSV export)

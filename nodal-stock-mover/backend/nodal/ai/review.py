@@ -164,7 +164,7 @@ def evidence_hash(facts_json: str, model: str) -> str:
 def review_run(run_id: str, actions: list[dict], evidence_by_id: dict, cand_map: dict, policy: dict, client: OllamaClient | None = None, limit: int | None = None) -> dict:
     """Review the highest-priority moves one by one (single local GPU), caching by evidence hash. Safe to re-run."""
     client = client or OllamaClient()
-    limit = int(limit if limit is not None else os.environ.get("AI_REVIEW_LIMIT", 40))
+    limit = int(limit if limit is not None else os.environ.get("AI_REVIEW_LIMIT", 60))
     chosen = prioritise(actions, cand_map, limit)
     chosen_ids = {a["id"] for a in chosen}
     for a in actions:

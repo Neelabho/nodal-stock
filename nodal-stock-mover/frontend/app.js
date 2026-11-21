@@ -190,7 +190,7 @@ async function openDrawer(id) {
   d.innerHTML = `<button class="btn x" id="dx">${ico("x")}Close</button>
   <span class="pill ${a.urgency}">${a.urgency}</span> <span class="pill type">${esc(a.type_label)} · ${esc(a.reason_label)}</span>
   <h1 style="margin-top:.5rem">${a.qty} × ${esc(a.sku_id)}</h1><div class="muted">${esc(a.style_name)} · ${esc(a.category)} · size ${esc(a.size)}</div>
-  <div class="say">${esc(a.explanation)}</div>
+  <div class="say">${expHtml(a)}</div>
   ${decisionBar(a)}
   ${kv([["Route", `${esc(a.source)} → ${esc(a.destination)}`], ["Dispatch → arrival", `${a.dispatch_date} → ${a.arrival_date} (${a.lead_days} days)`], ["Value at MRP", inr(a.value_mrp) + ` (${inr(a.unit_mrp)} each)`],
       ["Status", a.requires_approval ? "Needs human approval (> " + inr(S.ov.manifest.policy.approval_value_mrp) + ")" : "Proposed"], ["Supply basis", a.supply_basis === "on_hand" ? "stock on hand" : "planned inbound (status Planned)"], ["Confidence", esc(a.confidence)]])}
@@ -374,6 +374,10 @@ async function vModel() {
 S.skip = new Set();
 const VERB = { WH_TO_STORE: "Send", STORE_TO_STORE: "Move", PULL_BACK: "Pull back" };
 function decide(id, d) { return setDecision(id, d); }
+function expHtml(a, skip = []) {
+  if (!a.explanation_lines) return `<p class="mc-why">${esc(a.explanation)}</p>`;
+  return `<div class="exp">${a.explanation_lines.filter((r) => !skip.includes(r.label)).map((r) => `<div class="er"><span class="ek">${esc(r.label)}</span><span class="ev">${esc(r.text)}</span></div>`).join("")}</div>`;
+}
 function cardHtml(a, review, i = 0) {
   const d = S.dec[a.id];
   const cover = a.type === "PULL_BACK" ? "—" : cov(a.cover_before_days) + " → " + cov(a.cover_after_days);
@@ -385,7 +389,7 @@ function cardHtml(a, review, i = 0) {
     <div class="muted">${esc(a.style_name)} · size ${esc(a.size)}</div>
     <div class="mc-route">${esc(a.source)} → ${esc(a.destination)} <span>arrives ${esc(a.arrival_date.slice(5))}</span></div>
     <div class="mc-facts"><div><b>${cover}</b><span>Cover</span></div><div><b>${inr(a.value_mrp)}</b><span>Value</span></div><div><b>${esc(a.confidence)}</b><span>Confidence</span></div></div>
-    <p class="mc-why">${esc(a.explanation)}</p>
+    ${expHtml(a, ["Move", "Route"])}
     ${a.has_alt ? `<button class="alt-banner" data-act="details">${ico("sparkles")}<span>AI found a validated alternative. Compare</span>${ico("chevron-right")}</button>` : ""}
     <div class="mc-actions">
       <button data-act="rejected" class="${d === "rejected" ? "on-r" : ""}">${ico("x")}Reject</button>

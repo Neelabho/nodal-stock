@@ -72,6 +72,57 @@ def explain(a: dict, seas: dict, stores: pd.DataFrame, H: int) -> str:
             f"{'no sales in ' + str(dn['in_stock_days_84d']) + ' in-stock days' if dn['units_84d'] == 0 else 'cover ' + _fmt(dn['on_hand_before'] / max(dn['velocity_effective'], 1e-9)) + 'd'}; no store currently needs it. Consolidate at {dst} (assumed destination).")
 
 
+def _d(s: str) -> str:
+    return pd.Timestamp(s).strftime("%-d %b")
+
+
+def _days(x) -> str:
+    return "over a year" if x is None or x >= 365 else f"{x:.0f} days"
+
+
+ROW_ORDER = ("Move", "Route", "Arrives", "Demand", "Cover", "Source", "Why")
+
+
+def explain_lines(a: dict, seas: dict, stores: pd.DataFrame) -> list[dict]:
+    """The same seven rows for every move, in the same order, so screens read identically (the one-line `explanation` is kept for the brief and CSV)."""
+    e, r = a["evidence"], a["reason"]
+    rc, dn, sup = e.get("recipient", {}), e.get("donor", {}), e.get("supply", {})
+    src, dst, q = a["source"], a["destination"], a["qty"]
+    verb = {"WH_TO_STORE": "Send", "STORE_TO_STORE": "Move", "PULL_BACK": "Pull back"}[a["type"]]
+    rows = {"Move": f"{verb} {q} × {a['sku_id']} ({a['style_name']}, size {a['size']})", "Route": f"{src} → {dst}"}
+    rows["Arrives"] = (f"Leaves {_d(a['dispatch_date'])} on a planned warehouse delivery, arrives {_d(a['arrival_date'])}" if r == "scheduled_inbound"
+                       else f"{_d(a['arrival_date'])} · {a['lead_days']} days")
+    if a["type"] != "PULL_BACK" and rc:
+        parts = ["forecast"] if rc.get("forecast_ml") is not None else []
+        parts.append(f"recent average {rc['velocity_trailing']:.2f}")
+        st = stores.at[dst, "state"] if dst in stores.index else None
+        fx = seas.get(st) or {}
+        if fx.get("festival") and rc["velocity_used"] > 1.05 * max(rc["velocity_trailing"], 1e-9):
+            parts.append(f"{fx['festival']} in {fx['offset_days']} days")
+        rows["Demand"] = f"{dst} sells {rc['velocity_used']:.2f} a day ({'; '.join(parts)})"
+        rows["Cover"] = f"{_days(rc['cover_before_days'])} of stock on arrival → {_days(rc['cover_after_days'])} after this move"
+    else:
+        rows["Demand"] = (f"No sales in {dn.get('in_stock_days_84d', 0)} days in stock; no store needs it now" if dn.get("units_84d", 0) == 0 else "Sells slowly; no store needs it now")
+        rows["Cover"] = f"{src} keeps {dn.get('on_hand_after', 0)} of {dn.get('on_hand_before', 0)} units"
+    if a["type"] == "WH_TO_STORE":
+        rows["Source"] = f"Warehouse stock {sup.get('warehouse_available_before', '?')} → {sup.get('warehouse_available_after', '?')}" + (" (short, shared across stores)" if sup.get("shortfall") else "")
+    elif a["type"] == "STORE_TO_STORE":
+        rows["Source"] = f"{src} keeps {_days(dn.get('sku_cover_after_days'))} of stock (rule: at least 30 days)"
+    else:
+        rows["Source"] = f"{src} holds {dn.get('on_hand_before', 0)} units of this item"
+    age = f"{int(dn['oldest_unit_age_days'])} days" if dn.get("oldest_unit_age_days") is not None else "old"
+    sold = f"no sales in {dn.get('in_stock_days_84d', 0)} days in stock" if dn.get("units_84d", 0) == 0 else "slow sales"
+    d_ = e.get("display", {}); c_ = e.get("capacity", {})
+    rows["Why"] = {
+        "under_stocked": f"{dst} is running low", "scheduled_inbound": f"{dst} is running low; stock comes from a planned warehouse delivery",
+        "display_minimum": f"{dst} has {d_.get('units_before_plan', '?')} {d_.get('category', '')} units; the display minimum is {d_.get('minimum', '?')}",
+        "ageing_relocation": f"Old stock ({age}, {sold}) moves to where it sells", "surplus_rebalance": f"{src} has spare stock and {dst} needs it",
+        "over_capacity": f"{src} holds {c_.get('capacity', 0) + c_.get('excess_at_start', 0)} units; its capacity is {c_.get('capacity', '?')}",
+        "ageing_pullback": f"Oldest unit is {age} old and nobody needs it now",
+    }.get(r, a["reason_label"] if "reason_label" in a else r)
+    return [{"label": k, "text": rows[k]} for k in ROW_ORDER]
+
+
 def _tier(a):
     r = a["reason"]
     cb = a["evidence"].get("recipient", {}).get("cover_before_days")
@@ -129,6 +180,7 @@ def finalise(pl, d, seas):
         a["id"] = f"NDL-{i:04d}"
     for a in acts:
         a["explanation"] = explain(a, seas, stores, pol.seasonality_horizon_days)
+        a["explanation_lines"] = explain_lines(a, seas, stores)
         a["type_label"] = TYPE_LABEL[a["type"]]
         a["reason_label"] = REASON_LABEL[a["reason"]]
         a["status"] = "needs_approval" if a["requires_approval"] else "proposed"

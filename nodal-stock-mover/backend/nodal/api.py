@@ -70,7 +70,7 @@ def _reviews() -> dict:
 
 
 LIGHT = ["id", "type", "type_label", "reason", "reason_label", "urgency", "priority_tier", "sku_id", "style_id", "style_name", "category", "size", "source", "destination", "qty",
-         "dispatch_date", "arrival_date", "lead_days", "unit_mrp", "value_mrp", "cover_before_days", "cover_after_days", "confidence", "flags", "supply_basis", "requires_approval", "status", "explanation"]
+         "dispatch_date", "arrival_date", "lead_days", "unit_mrp", "value_mrp", "cover_before_days", "cover_after_days", "confidence", "flags", "supply_basis", "requires_approval", "status", "explanation", "explanation_lines"]
 
 
 def _ai_brief(mid: str) -> dict:
@@ -138,7 +138,7 @@ def rerun():
 def actions():
     r = _result()
     dec = db.current_decisions(_state["run_id"])
-    return [{**{k: a[k] for k in LIGHT}, **_ai_brief(a["id"]), "decision": (dec.get(a["id"]) or {}).get("decision")} for a in r["actions"]]
+    return [{**{k: a.get(k) for k in LIGHT}, **_ai_brief(a["id"]), "decision": (dec.get(a["id"]) or {}).get("decision")} for a in r["actions"]]
 
 
 @app.get("/api/actions/{aid}")
@@ -172,7 +172,7 @@ def decide(body: DecisionIn, x_client_id: str | None = Header(default=None)):
     if body.decision in ("approved", "approved_alternative") and target["requires_approval"] and not body.confirm_high_value:
         raise HTTPException(409, {"error": "needs_confirmation", "message": f"This move is worth ₹{target['value_mrp']:,} at MRP (above the sign-off limit). Confirm explicitly."})
     actor = _actor(x_client_id)
-    out = db.record_decision(_state["run_id"], body.move_id, body.decision, actor, body.reason, original={k: a[k] for k in LIGHT}, ai_alternative=alt,
+    out = db.record_decision(_state["run_id"], body.move_id, body.decision, actor, body.reason, original={k: a.get(k) for k in LIGHT}, ai_alternative=alt,
                              confirmed=body.confirm_high_value)
     if out["written"]:
         db.audit("decision", actor, run=_state["run_id"], move=body.move_id, decision=body.decision)
@@ -228,7 +228,7 @@ def _apply_batch(ids: list[str], decision: str, actor: str, confirm: bool, reaso
                                   "message": f"{len(big)} item(s) in this selection are above the ₹{shp_threshold():,} sign-off limit (₹{sum(a['value_mrp'] for a in big):,} together). Confirm to approve everything."})
     written = 0
     for a in moves:
-        out = db.record_decision(_state["run_id"], a["id"], decision, actor, reason, original={k: a[k] for k in LIGHT}, confirmed=confirm and a["requires_approval"])
+        out = db.record_decision(_state["run_id"], a["id"], decision, actor, reason, original={k: a.get(k) for k in LIGHT}, confirmed=confirm and a["requires_approval"])
         written += int(out["written"])
     db.audit("batch_decision", actor, run=_state["run_id"], scope=label, decision=decision, moves=len(moves), written=written)
     return {"moves": len(moves), "written": written, "note": "This approves the proposed plan only. It does not dispatch any stock."}

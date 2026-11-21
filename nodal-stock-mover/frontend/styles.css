@@ -263,3 +263,10 @@ main>*{animation:rise .55s var(--ease) both}
 /* containers of nested glass carry no droplet of their own (it would show through the children as a bright patch) */
 details.card::before,.drawer::before{display:none}
 @media (max-width:700px){.drawer::before{display:block}}
+
+/* ---------- move explanation: the same seven rows everywhere ---------- */
+.exp{display:grid;gap:.55rem;max-width:480px;margin:.6rem auto .9rem;text-align:left}
+.er{display:grid;grid-template-columns:76px 1fr;gap:.9rem;align-items:baseline}
+.ek{font-size:.62rem;text-transform:uppercase;letter-spacing:.16em;color:var(--muted)}
+.ev{font-size:.92rem;line-height:1.45}
+.say .exp{margin:.2rem auto}
