@@ -141,3 +141,16 @@ def test_oversized_but_valid_sarvam_review_is_trimmed_not_rejected(result, fresh
     assert out["state"] == "completed" and len(out["review"]["reasoning"]) <= 700 and len(out["review"]["evidence_refs"]) == 8
     wrong = json.dumps({**json.loads(long), "evidence_refs": ["made_up_key"]})
     assert review.review_one(build(Log(), local_up=False, remote_text=wrong), a, a["evidence"], [], pol)["state"] == "failed"       # strict checks unchanged
+
+
+def test_default_provider_is_sarvam_only_and_never_touches_the_local_model(monkeypatch):
+    monkeypatch.delenv("AI_USE_LOCAL", raising=False)
+    calls = []
+    def h(r):
+        calls.append(str(r.url))
+        return httpx.Response(200, json={"choices": [{"message": {"content": '{"summary": "from sarvam"}'}}]})
+    p = AIProvider(remote=qa.SarvamClient(api_key="k", model="sarvam-x", transport=httpx.MockTransport(h)))
+    assert p.local is None and p.available() == {"ok": True, "local": False, "remote": True, "model": "sarvam-x"}
+    assert p.chat_json("s", "u", SCHEMA)["summary"] == "from sarvam" and p.last_source == "sarvam"
+    assert all("api.sarvam.ai" in u for u in calls)                                    # nothing else was contacted
+    assert AIProvider(remote=qa.SarvamClient(api_key=None), allow_remote=True).available()["ok"] is False   # no key: AI off, plan still works

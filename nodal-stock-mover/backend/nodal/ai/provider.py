@@ -1,4 +1,4 @@
-"""One AI entry point for every feature: local Qwen3 (Ollama) first; if it is unavailable, Sarvam AI takes over.
+"""One AI entry point for every feature. Sarvam AI is the model. (A local Ollama model is opt-in only: AI_USE_LOCAL=1; it is OFF by default.)
 
 Every feature (move reviews, shipment summaries, shortage actions, plan answers) calls this the same way it called OllamaClient, and
 every answer still goes through the same schema / number-grounding / evidence checks, whichever model wrote it.
@@ -15,21 +15,25 @@ log = logging.getLogger("nodal.ai")
 
 
 class AIProvider:
-    def __init__(self, local: OllamaClient | None = None, remote=None, allow_remote: bool | None = None, local_retry_seconds: float = 30):
+    def __init__(self, local: OllamaClient | None = None, remote=None, allow_remote: bool | None = None, local_retry_seconds: float = 30, use_local: bool | None = None):
         from ..qa import SarvamClient
-        self.local = local or OllamaClient()
+        if use_local is None:
+            use_local = local is not None or os.environ.get("AI_USE_LOCAL") == "1"
+        self.local = (local or OllamaClient()) if use_local else None
         self.remote = remote or SarvamClient()
         self.allow_remote = (os.environ.get("AI_REMOTE_FALLBACK", "1") != "0") if allow_remote is None else allow_remote
         self.max_remote = int(os.environ.get("AI_REMOTE_MAX_CALLS", 200))
         self.remote_calls = 0
-        self.model = self.local.model
-        self.last_source = "local_ai"
+        self.model = self.local.model if self.local else self.remote.model
+        self.last_source = "sarvam"
         self._local_ok_until = 0.0
         self._local_bad_until = 0.0
         self._retry = local_retry_seconds
 
     # ---- availability
     def _local_ok(self) -> bool:
+        if self.local is None:
+            return False
         now = time.time()
         if now < self._local_bad_until:
             return False
@@ -47,7 +51,7 @@ class AIProvider:
 
     def available(self) -> dict:
         lo, re_ = self._local_ok(), self._remote_ok()
-        self.model = self.local.model if lo else (self.remote.model if re_ else self.local.model)
+        self.model = self.local.model if lo else self.remote.model
         return {"ok": lo or re_, "local": lo, "remote": re_, "model": self.model}
 
     # ---- the call
@@ -76,7 +80,7 @@ class AIProvider:
                 return out
             except Exception as e:  # noqa: BLE001
                 problems.append(f"sarvam: {type(e).__name__}")
-        raise OllamaError("no AI model available (" + "; ".join(problems or ["local model down", "Sarvam fallback off or not configured"]) + ")")
+        raise OllamaError("no AI model available (" + "; ".join(problems or ["Sarvam is off (AI_REMOTE_FALLBACK=0) or has no API key"]) + ")")
 
 
 def _extract_json(text: str) -> dict:

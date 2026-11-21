@@ -94,7 +94,7 @@ const uniq = (k) => [...new Set(S.acts.map((a) => a[k]))].sort();
 function opts(list, sel, label) { return `<option value="">${label}</option>` + list.map(([v, t]) => `<option value="${esc(v)}" ${sel === v ? "selected" : ""}>${esc(t)}</option>`).join(""); }
 
 S.movesView = "moves";
-const srcLabel = (s) => (s === "local_ai" ? "Written by the local AI" : s === "sarvam" ? "Written by Sarvam AI" : "Standard wording");
+const srcLabel = (s) => (s === "local_ai" ? "Written by AI" : s === "sarvam" ? "Written by Sarvam AI" : "Standard wording");
 function segHtml() {
   const n = S.short ? S.short.groups.length : 0;
   return `<div style="display:flex;justify-content:center;margin:.2rem 0 1rem"><div class="seg" role="tablist" aria-label="Moves view"><button role="tab" data-mv="moves" class="${S.movesView === "moves" ? "on" : ""}">Planned moves</button><button role="tab" data-mv="shortages" class="${S.movesView === "shortages" ? "on" : ""}">Shortages${n ? ` · ${n}` : ""}</button></div></div>`;
@@ -510,7 +510,7 @@ function aiChip(a) {
 }
 const KIND = { alternative_donor: "A different store gives the stock", donor_instead_of_warehouse: "A store with spare stock instead of the warehouse", warehouse_instead_of_store: "Send from the warehouse instead of a store", alternative_destination: "A different destination store" };
 function aiSection(rv) {
-  if (!rv) return `<h3>AI review (advisory)</h3><div class="note">Not reviewed by Qwen3. Only the highest-priority moves are reviewed, and reviews are skipped if the AI server is unavailable. The deterministic checks above still apply.</div>`;
+  if (!rv) return `<h3>AI review (advisory)</h3><div class="note">Not reviewed by the AI. Only the highest-priority moves are reviewed, and reviews are skipped if the AI server is unavailable. The deterministic checks above still apply.</div>`;
   if (rv.state === "failed") return `<h3>AI review (advisory)</h3><div class="note">The AI review failed and was discarded: ${esc(rv.error || "unknown error")}</div>`;
   if (rv.state !== "completed") return `<h3>AI review (advisory)</h3><div class="note">${rv.state === "skipped" ? "Outside the AI review budget for this run." : "AI review pending."}</div>`;
   const r = rv.review;
@@ -555,12 +555,12 @@ async function vAI() {
   const cards = d.reviews.map((x) => `<article class="mcard" tabindex="0" role="button" data-id="${x.id}"><div class="mc-top"><span class="pill ${x.state === "failed" ? "error" : AI_TONE[x.outcome] || "type"}">${x.state === "failed" ? "AI failed" : AI_LABEL[x.outcome] || x.state}</span><span class="muted">${esc(x.move.type_label)} · ${esc(x.move.urgency)}</span></div>
     <h3 class="mc-title">${x.move.qty} × ${esc(x.move.sku_id)}</h3><div class="mc-route">${esc(x.move.source)} → ${esc(x.move.destination)} <span>${inr(x.move.value_mrp)}</span></div>
     <p class="mc-why" style="margin:8px 0 0">${esc(x.review ? x.review.plain_explanation : x.error || "")}</p>${x.alternative ? `<div class="alt-banner" style="margin-top:8px">${ico("sparkles")}<span>Validated alternative available</span></div>` : ""}</article>`).join("");
-  $("#main").innerHTML = `<h1>AI Intelligence</h1><p class="lead">Qwen3 8B runs locally through Ollama and reviews the highest-priority moves. It is advisory: it only sees facts NODAL computed, every number it writes is checked against those facts, and any alternative is re-validated by the independent rule validator before it can be approved.</p>
+  $("#main").innerHTML = `<h1>AI Intelligence</h1><p class="lead">Sarvam AI reviews the highest-priority moves. It is advisory: it only sees facts NODAL computed, every number it writes is checked against those facts, and any alternative is re-validated by the independent rule validator before it can be approved.</p>
     <div class="grid kpis"><div class="card kpi"><div class="v">${num(s.ai ? s.ai.reviews_completed : 0)}</div><div class="l">Reviews completed</div><div class="s">of ${num(total)} moves (prioritised)</div></div>
     <div class="card kpi"><div class="v">${num(o.FLAG || 0)}</div><div class="l">Flagged</div></div><div class="card kpi"><div class="v">${num(s.ai ? s.ai.alternatives : 0)}</div><div class="l">Alternatives</div><div class="s">${num(d.candidates_evaluated)} candidates evaluated · ${num(d.better_by_calculation)} better by calculation</div></div>
     <div class="card kpi"><div class="v">${num((d.states.failed || 0) + (d.states.pending || 0))}</div><div class="l">Failed / pending</div><div class="s">${num(d.states.skipped || 0)} outside budget</div></div></div>
     <div class="note">${esc(d.note)} Model-stated confidence is not a calibrated probability.</div>
-    <h2>Reviewed moves</h2>${cards || '<div class="empty">No AI reviews in this run. Start Ollama and re-run the daily pipeline.</div>'}`;
+    <h2>Reviewed moves</h2>${cards || '<div class="empty">No AI reviews in this run. Check the Sarvam API key and re-run the daily pipeline.</div>'}`;
   document.querySelectorAll("#main .mcard").forEach((c) => c.addEventListener("click", () => openDrawer(c.dataset.id)));
 }
 async function vRuns() {
@@ -757,7 +757,7 @@ async function openShipment(id) {
     note: `From ${esc(m.source)} · arrives ${esc(dm(m.arrival_date))}` }));
   d.innerHTML = `<button class="btn x" id="dx">${ico("x")}<span>Close</span></button>
     <div class="eyebrow">${s.kind === "pullback" ? "Pull-back" : "Shipment"} · ${esc(s.store)}</div><h2 style="margin:.2rem 0 .6rem">${esc(s.city || s.store)}</h2>
-    <div class="say">${esc(s.summary)}<br><small class="faint">${s.summary_source === "local_ai" ? "Written by the local AI model" : s.summary_source === "sarvam" ? "Written by Sarvam AI (the local model was unavailable)" : "Standard wording"}</small></div>
+    <div class="say">${esc(s.summary)}<br><small class="faint">${s.summary_source === "local_ai" ? "Written by AI (earlier run)" : s.summary_source === "sarvam" ? "Written by Sarvam AI" : "Standard wording"}</small></div>
     <div style="display:flex;justify-content:center;gap:2rem;margin:1rem 0"><div><b style="font-size:1.8rem;font-weight:200">${num(s.units)}</b><br><span class="muted" style="font-size:.7rem;letter-spacing:.16em;text-transform:uppercase">units</span></div><div><b style="font-size:1.8rem;font-weight:200">${money(s.value_mrp)}</b><br><span class="muted" style="font-size:.7rem;letter-spacing:.16em;text-transform:uppercase">value</span></div><div><b style="font-size:1.8rem;font-weight:200">${s.moves.length}</b><br><span class="muted" style="font-size:.7rem;letter-spacing:.16em;text-transform:uppercase">items</span></div></div>
     <div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap">${s.reasons.map((r) => `<span class="pill type" style="text-transform:none;letter-spacing:.04em">${r.items} ${esc(r.reason)}</span>`).join("")}</div>
     <div class="dbar"><div class="mc-actions"><button data-sd="rejected" class="${s.status === "rejected" ? "on-r" : ""}">${ico("x")}Reject all</button><button data-sd="approved" class="${s.status === "approved" ? "on-a" : "go"}">${ico("check")}Approve all</button></div>
@@ -773,11 +773,11 @@ async function openShipment(id) {
 
 /* ---------- Ask ---------- */
 function vAsk() {
-  return `<h1>Ask</h1><p class="lead">Ask about retail stock rules, or about a store in today's plan. General questions go to Sarvam AI with no company data. Questions about stores and moves are answered here from NODAL's own facts.</p>
+  return `<h1>Ask</h1><p class="lead">Ask about retail stock rules, or about a store in today's plan. General questions go to Sarvam AI with no company data. Questions about stores and moves send only the matching plan facts to Sarvam.</p>
     <div class="chips" id="chips"></div><div class="chat" id="chat"></div>
     <form class="ask-in" id="ask-form"><input id="ask-q" type="text" maxlength="300" placeholder="Ask a question…" aria-label="Your question" autocomplete="off"><button class="round go" style="width:50px;height:50px;flex:none" aria-label="Send">${ico("send")}</button></form>`;
 }
-const SRC = { sarvam: "Answered by Sarvam AI", cache: "From saved answers", plan: "From today's plan", local_ai: "From today's plan, written by the local AI" };
+const SRC = { sarvam: "Answered by Sarvam AI", cache: "From saved answers", plan: "From today's plan", local_ai: "From today's plan" };
 function drawChat() {
   const c = $("#chat"); if (!c) return;
   c.innerHTML = S.chat.map((b) => b.role === "me" ? `<div class="bub me">${esc(b.text)}</div>` : b.typing ? `<div class="bub ai"><span class="typing"><i></i><i></i><i></i></span></div>` : `<div class="bub ai">${esc(b.text)}${b.source ? `<small>${esc(SRC[b.source] || b.source)}</small>` : ""}</div>`).join("");

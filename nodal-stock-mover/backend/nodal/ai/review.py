@@ -142,7 +142,14 @@ def review_one(client: OllamaClient, a: dict, evidence: dict, cands: list[dict],
     try:
         for attempt in (1, 2):
             raw = client.chat_json(SYSTEM, user + ("" if attempt == 1 else "\nIMPORTANT: your previous answer was rejected: quote only numbers that appear in the facts, and give evidence_refs using exact keys from `facts`."), REVIEW_SCHEMA)
-            rv = AIReview.model_validate(_trim(raw))
+            try:
+                rv = AIReview.model_validate(_trim(raw))
+            except Exception as ve:  # noqa: BLE001  (pydantic ValidationError): retry once, then give up
+                log.warning("move %s: response did not fit the schema (attempt %d): %s", a["id"], attempt, type(ve).__name__)
+                if attempt == 2:
+                    raise
+                user += "\nIMPORTANT: answer with exactly the requested JSON fields; outcome must be one of CONFIRM, FLAG, ALTERNATIVE, INSUFFICIENT_EVIDENCE; keep text short."
+                continue
             bad = ungrounded_numbers(rv, grounding)
             bad += [f"ref:{x}" for x in rv.evidence_refs if x not in facts and x not in cand_ids]
             if not rv.evidence_refs:

@@ -2,7 +2,11 @@
 
 **Brief:** Manyavar Stock Mover (Case study B). **Repo:** https://github.com/Neelabho/nodal-stock
 
-## v4 (latest)
+## v5 (latest): Sarvam is the only AI
+- All AI (move reviews, shipment summaries, shortage actions, plan answers, general questions) now uses Sarvam; the local model is off by default. Last full run: 56 of 60 reviews completed (4 rejected by the safety checks; run marked `partial`), 22 of 22 summaries, 19 of 19 shortage actions. Privacy: store/product facts are sent to Sarvam; `AI_REMOTE_FALLBACK=0` turns all AI off.
+- **Add data verified at pipeline level:** a modified stock file layered over the supplied data changed the plan as expected (warehouse stock zeroed for one product, so its 1 Nov sends switched from stock-on-hand to planned deliveries; all 11 rules pass). The browser upload click-through itself has not been run.
+
+## v4
 - **Moves has two switchable sections:** *Planned moves* (what the plan does) and *Shortages* (demand the plan could not cover: 19 stores, 337 items, 1,565 units, ₹1.22 Cr of sales at risk). Each shortage store has one plain-English suggested business action written by the local AI (all 19 on the last run), number-checked and cached; standard wording is the fallback. Verified in the app: switch, cards, items sheet with causes and planned warehouse deliveries, back gesture.
 - **Local-first AI with Sarvam fallback everywhere:** move reviews, shipment summaries, shortage actions and plan answers try the local model first and use Sarvam if it is unavailable, with the same safety checks (live check with the local model unreachable: Sarvam returned valid JSON in 0.5 s). **Privacy note:** in fallback, store/product facts are sent to Sarvam; `AI_REMOTE_FALLBACK=0` turns this off. **Verified on a full pipeline run with the local model unreachable:** Sarvam wrote 22 of 22 shipment summaries and 19 of 19 shortage actions and completed 8 of 10 move reviews; the other 2 were rejected by the safety checks and the run was honestly marked `partial`, not complete.
 - Moves are explained in the same seven labelled rows everywhere (Move, Route, Arrives, Demand, Cover, Source, Why); the one-line explanation required by the brief is kept for the CSV.
