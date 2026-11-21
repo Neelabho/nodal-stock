@@ -30,7 +30,7 @@ nodal-stock-mover/data/*
 .claude/settings.local.json
 .claude/worktrees/
 
-# hackathon operator kit + organiser pack: kept locally, not part of the submission
+# hackathon operator kit + organiser pack: kept locally, not part of the submission (organiser data pack IS committed)
 KIT_README.md
 CLAUDE.md
 PROMPT_CARDS.md
@@ -40,4 +40,3 @@ solo-hackathon-operator-skill.zip
 checklists/
 templates/
 .claude/
-manyavar-vch3-data/

@@ -11,7 +11,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 cd backend && ../.venv/bin/python -m nodal.cli   # headless run -> data/actions.csv + data/run_manifest.json
 ```
 
-Data: the organiser CSVs must be at `../manyavar-vch3-data/csv/` (relative to this folder), or set `NODAL_DATA_DIR`.
+Data: the unmodified organiser pack is committed at `../manyavar-vch3-data/csv/`; set `NODAL_DATA_DIR` to use another copy.
 Missing or malformed files produce an actionable error in the UI. Source files are never modified.
 
 ## Workflow in the UI

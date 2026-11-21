@@ -9,8 +9,8 @@ No LLM is involved in any quantity.
 
 ## Run it
 
-Requires Python 3.11+. Place the organiser data pack so that the CSVs are at `manyavar-vch3-data/csv/`
-(or set `NODAL_DATA_DIR`). The pack is not redistributed in this repo.
+Requires Python 3.11+. The supplied Manyavar data pack is included unmodified under `manyavar-vch3-data/`
+(the app reads `manyavar-vch3-data/csv/`; override with `NODAL_DATA_DIR`). Data and briefs belong to Vedant Fashions Limited.
 
 ```bash
 cd nodal-stock-mover

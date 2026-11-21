@@ -11,4 +11,4 @@
 | 7 | Thresholds not in the data (reorder trigger 14d, target cover 30d, ageing 180d) are ASSUMED, centralised in `policy.py` and shown in the UI; 30-day donor cover and ₹1,00,000 approval limit are read from `rules.csv`. | Brief fixes only these two. |
 | 8 | Independent validator re-derives post-plan state from source tables; violating actions are excluded, not warned. | Brief: "we check that no rule is broken". |
 | 9 | Contradictory data (negative stock) is excluded from all actions, not repaired. | Never silently produce a confident action from bad data. |
-| 10 | Repo contains only the application, docs and tests; the organiser data pack and the personal operator kit are git-ignored. | Judged artefacts only; data belongs to Vedant Fashions. |
+| 10 | Repo contains the application, docs, tests and the unmodified organiser data pack (builder's call); the personal operator kit is git-ignored. | Judges can clone and run with no extra setup; data belongs to Vedant Fashions. |
