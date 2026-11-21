@@ -4,31 +4,45 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>NODAL — Stock Mover</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%237a1f2b'/%3E%3Ccircle cx='9' cy='9' r='3' fill='%23fff'/%3E%3Ccircle cx='23' cy='11' r='3' fill='%23fff'/%3E%3Ccircle cx='15' cy='23' r='3' fill='%23fff'/%3E%3Cpath d='M9 9L23 11L15 23Z' stroke='%23fff' fill='none' stroke-width='1.5'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='4' fill='%23852201'/%3E%3Ccircle cx='9' cy='9' r='3' fill='%23fff'/%3E%3Ccircle cx='23' cy='11' r='3' fill='%23fff'/%3E%3Ccircle cx='15' cy='23' r='3' fill='%23fff'/%3E%3Cpath d='M9 9L23 11L15 23Z' stroke='%23fff' fill='none' stroke-width='1.5'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600&family=Rufina:wght@400;700&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
 <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
-<header class="top">
-  <div class="brand">
-    <svg viewBox="0 0 32 32" width="30" height="30" aria-hidden="true"><rect width="32" height="32" rx="8" fill="var(--brand)"/><circle cx="9" cy="9" r="3" fill="#fff"/><circle cx="23" cy="11" r="3" fill="#fff"/><circle cx="15" cy="23" r="3" fill="#fff"/><path d="M9 9L23 11L15 23Z" stroke="#fff" fill="none" stroke-width="1.5"/></svg>
-    <div><b>NODAL</b><span>Stock Mover · right stock, right store, right size</span></div>
+<div class="app">
+  <aside class="side">
+    <div class="brand">
+      <svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true"><rect width="32" height="32" rx="4" fill="var(--accent)"/><circle cx="9" cy="9" r="3" fill="#fff"/><circle cx="23" cy="11" r="3" fill="#fff"/><circle cx="15" cy="23" r="3" fill="#fff"/><path d="M9 9L23 11L15 23Z" stroke="#fff" fill="none" stroke-width="1.5"/></svg>
+      <div class="brand-t"><b>NODAL</b><span>Stock Mover</span></div>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="Views">
+      <button data-tab="overview" class="on"><i data-lucide="layout-dashboard"></i><span>Overview</span></button>
+      <button data-tab="register"><i data-lucide="list-checks"></i><span>Action register</span></button>
+      <button data-tab="map"><i data-lucide="map-pin"></i><span>Hotspot map</span></button>
+      <button data-tab="safety"><i data-lucide="shield-check"></i><span>Rules &amp; gaps</span></button>
+      <button data-tab="quality"><i data-lucide="database"></i><span>Data quality</span></button>
+      <button data-tab="model"><i data-lucide="line-chart"></i><span>Forecast model</span></button>
+      <button data-tab="method"><i data-lucide="info"></i><span>Method</span></button>
+    </nav>
+    <div class="side-foot muted" id="asof"></div>
+  </aside>
+  <div class="content">
+    <header class="bar">
+      <div class="bar-t" id="bar-title">Overview</div>
+      <div class="bar-r">
+        <button id="btn-run" class="btn"><i data-lucide="refresh-cw"></i><span>Re-run engine</span></button>
+        <a id="btn-csv" class="btn primary" href="/api/export.csv"><i data-lucide="download"></i><span>Export CSV</span></a>
+      </div>
+    </header>
+    <main id="main"><div class="loading">Running the engine on the Manyavar data…</div></main>
   </div>
-  <div class="top-right">
-    <span id="asof" class="muted"></span>
-    <button id="btn-run" class="btn">Re-run engine</button>
-    <a id="btn-csv" class="btn primary" href="/api/export.csv">Export CSV</a>
-  </div>
-</header>
-<nav class="tabs" role="tablist">
-  <button data-tab="overview" class="on">Overview</button>
-  <button data-tab="register">Action register</button>
-  <button data-tab="quality">Data quality</button>
-  <button data-tab="safety">Rules &amp; gaps</button>
-  <button data-tab="method">Method</button>
-</nav>
-<main id="main"><div class="loading">Running the engine on the Manyavar data…</div></main>
+</div>
 <aside id="drawer" class="drawer" aria-hidden="true"></aside>
 <div id="scrim" class="scrim"></div>
+<script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>
