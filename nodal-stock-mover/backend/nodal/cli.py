@@ -5,6 +5,8 @@ from pathlib import Path
 from .engine import run
 
 def main():
+    from .envfile import load_env
+    load_env()                       # SARVAM_API_KEY etc. from the git-ignored .env (real environment variables win)
     root = Path(__file__).resolve().parents[3]
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", default=str(root / "manyavar-vch3-data" / "csv"))

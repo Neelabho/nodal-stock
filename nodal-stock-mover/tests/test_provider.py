@@ -123,3 +123,21 @@ def test_plan_answer_uses_sarvam_when_local_is_down(fresh):
     off = qa.answer("What is going to PAT-01 today?", "c2", "run1", None, ships, {"shipments": 1, "units": 323, "needs_signoff": 5, "approved": 0, "awaiting": 54},
                     local_client=build(Log(), local_up=False, allow_remote=False))
     assert off["source"] == "plan" and "323 units" in off["answer"]                 # everything off: deterministic answer
+
+
+def test_prose_answer_from_sarvam_is_wrapped_for_single_text_schemas_but_not_for_complex_ones():
+    log = Log(); p = build(log, local_up=False, remote_text="Patna is running low on 54 items.")
+    assert p.chat_json("s", "u", SCHEMA)["summary"] == "Patna is running low on 54 items."
+    with pytest.raises(OllamaError):                                              # multi-field schema (a move review) cannot be rebuilt from prose
+        build(Log(), local_up=False, remote_text="Looks fine.").chat_json("s", "u", {"type": "object", "properties": {"a": {"type": "string"}, "b": {"type": "string"}}, "required": ["a", "b"]})
+
+
+def test_oversized_but_valid_sarvam_review_is_trimmed_not_rejected(result, fresh):
+    a = next(x for x in result["actions"] if x["type"] == "WH_TO_STORE"); pol = result["manifest"]["policy"]
+    long = json.dumps({"outcome": "CONFIRM", "plain_explanation": "The store will run out, so this makes sense.", "reasoning": "Rules pass. " * 120,
+                       "evidence_refs": ["validator", "move_type", "reason", "units", "sku", "from", "to", "lead_days", "arrival_date", "dispatch_date"], "risks": [], "missing_information": [],
+                       "confidence": "low", "preferred_candidate": None})
+    out = review.review_one(build(Log(), local_up=False, remote_text=long), a, a["evidence"], [], pol)
+    assert out["state"] == "completed" and len(out["review"]["reasoning"]) <= 700 and len(out["review"]["evidence_refs"]) == 8
+    wrong = json.dumps({**json.loads(long), "evidence_refs": ["made_up_key"]})
+    assert review.review_one(build(Log(), local_up=False, remote_text=wrong), a, a["evidence"], [], pol)["state"] == "failed"       # strict checks unchanged

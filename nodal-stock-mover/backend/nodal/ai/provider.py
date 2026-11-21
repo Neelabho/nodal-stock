@@ -68,7 +68,10 @@ class AIProvider:
             try:
                 text = self.remote.chat(system + "\nReply with ONLY a single JSON object that matches this JSON schema, no other text:\n" + json.dumps(schema),
                                         user, max_tokens=max(max_tokens, 500), temperature=0.1)
-                out = _extract_json(text)
+                try:
+                    out = _extract_json(text)
+                except ValueError:
+                    out = _wrap_single_text(text, schema)          # Sarvam sometimes answers in prose; wrap it when the schema is one text field
                 self.last_source, self.model = "sarvam", self.remote.model
                 return out
             except Exception as e:  # noqa: BLE001
@@ -83,6 +86,14 @@ def _extract_json(text: str) -> dict:
     if not m:
         raise ValueError("no JSON object in answer")
     return json.loads(m.group(0))
+
+
+def _wrap_single_text(text: str, schema: dict) -> dict:
+    req = schema.get("required", [])
+    props = schema.get("properties", {})
+    if len(req) == 1 and props.get(req[0], {}).get("type") == "string" and (text or "").strip():
+        return {req[0]: text.strip().strip('"')}
+    raise ValueError("answer was not JSON and the schema has more than one field")
 
 
 def default_client() -> AIProvider:

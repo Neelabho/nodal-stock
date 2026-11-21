@@ -112,6 +112,27 @@ def prompt_for(facts: dict, cands: list[dict]) -> str:
     return json.dumps({"facts": facts, "candidates": cs}, ensure_ascii=False, default=str)
 
 
+def _trim(raw: dict) -> dict:
+    """Models other than the local one ignore length limits. Trim to the schema's caps (text at a sentence end); content checks stay strict."""
+    if not isinstance(raw, dict):
+        return raw
+    def cut(s, n):
+        s = str(s or "")
+        if len(s) <= n:
+            return s
+        c = s[:n]
+        i = max(c.rfind(". "), c.rfind("; "))
+        return (c[: i + 1] if i > n * 0.5 else c.rstrip()).strip()
+    out = dict(raw)
+    for k, n in (("plain_explanation", 420), ("reasoning", 700)):
+        if k in out:
+            out[k] = cut(out[k], n)
+    for k, n in (("evidence_refs", 8), ("risks", 4), ("missing_information", 4)):
+        if isinstance(out.get(k), list):
+            out[k] = [str(x) for x in out[k]][:n]
+    return out
+
+
 def review_one(client: OllamaClient, a: dict, evidence: dict, cands: list[dict], policy: dict) -> dict:
     """Returns {state, review, alternative, error}. Never raises."""
     facts = build_facts(a, evidence, policy)
@@ -121,7 +142,7 @@ def review_one(client: OllamaClient, a: dict, evidence: dict, cands: list[dict],
     try:
         for attempt in (1, 2):
             raw = client.chat_json(SYSTEM, user + ("" if attempt == 1 else "\nIMPORTANT: your previous answer was rejected: quote only numbers that appear in the facts, and give evidence_refs using exact keys from `facts`."), REVIEW_SCHEMA)
-            rv = AIReview.model_validate(raw)
+            rv = AIReview.model_validate(_trim(raw))
             bad = ungrounded_numbers(rv, grounding)
             bad += [f"ref:{x}" for x in rv.evidence_refs if x not in facts and x not in cand_ids]
             if not rv.evidence_refs:
