@@ -464,6 +464,21 @@ function toast(msg, undo) {
   if (undo) t.querySelector("button").onclick = () => { t.classList.remove("on"); undo(); };
   t.classList.add("on"); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove("on"), undo ? 7000 : 4200);
 }
+/* In-app confirmation. Native confirm() is blocked or auto-cancelled in embedded browsers and some PWAs, which made big approvals silently do nothing. */
+function askConfirm(message) {
+  return new Promise((resolve) => {
+    const old = $("#confirm-modal"); if (old) old.remove();
+    const m = document.createElement("div"); m.id = "confirm-modal"; m.setAttribute("role", "alertdialog"); m.setAttribute("aria-modal", "true");
+    m.innerHTML = `<div class="cm-box glass"><h3>Confirm approval</h3><p>${esc(message)}</p><p class="muted">Approving records approval of the plan only. No stock is dispatched.</p>
+      <div class="cm-act"><button type="button" class="btn ghost" data-c="0">Cancel</button><button type="button" class="btn go" data-c="1">${ico("check")}<span>Approve</span></button></div></div>`;
+    document.body.appendChild(m); if (window.lucide) lucide.createIcons();
+    const done = (v) => { document.removeEventListener("keydown", onk, true); m.remove(); resolve(v); };
+    const onk = (e) => { if (e.key === "Escape") { e.stopPropagation(); done(false); } };
+    document.addEventListener("keydown", onk, true);
+    m.addEventListener("click", (e) => { const b = e.target.closest("[data-c]"); if (b) done(b.dataset.c === "1"); else if (e.target === m) done(false); });
+    m.querySelector('[data-c="1"]').focus();
+  });
+}
 async function setDecision(id, decision, opts = {}) {
   if (!navigator.onLine) return toast("You are offline. Approvals need a connection.");
   const cur = S.decFull[id];
@@ -473,7 +488,7 @@ async function setDecision(id, decision, opts = {}) {
     let r = await post();
     if (r.status === 409) {
       const j = await r.json();
-      if (!confirm(((j.detail && j.detail.message) || "This is a high-value move.") + "\n\nApproving records approval of the plan only. No stock is dispatched.")) return;
+      if (!(await askConfirm(((j.detail && j.detail.message) || "This is a high-value move.")))) return;
       body.confirm_high_value = true; r = await post();
     }
     if (!r.ok) { let m = r.statusText; try { const j = await r.json(); m = typeof j.detail === "string" ? j.detail : (j.detail && j.detail.message) || m; } catch { /* */ } throw new Error(m); }
@@ -715,7 +730,7 @@ async function decideShip(id, decision, opts = {}) {
     let r = await post(false);
     if (r.status === 409) {
       const j = await r.json();
-      if (!confirm(((j.detail && j.detail.message) || "This includes big items.") + "\n\nApproving records approval of the plan only. No stock is dispatched.")) { reset(); return; }
+      if (!(await askConfirm(((j.detail && j.detail.message) || "This includes big items.")))) { reset(); return; }
       r = await post(true);
     }
     if (!r.ok) { let m = r.statusText; try { const j = await r.json(); m = typeof j.detail === "string" ? j.detail : (j.detail && j.detail.message) || m; } catch { /* */ } throw new Error(m); }
