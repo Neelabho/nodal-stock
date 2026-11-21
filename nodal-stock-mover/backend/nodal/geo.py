@@ -7,14 +7,14 @@ CITY_LATLON = {
 WAREHOUSE_CITY = "Kolkata"   # WH-KOL
 
 
-def place(stores) -> dict:
+def place(stores) -> dict:   # stores: list of dicts with store_id and city
     """store_id -> (lat, lon); unknown cities are omitted (never invented)."""
     out, seen = {}, {}
     ring = [(0.0, 0.0), (0.045, 0.03), (-0.04, 0.04), (0.03, -0.05), (-0.05, -0.03), (0.06, 0.0)]
-    for r in stores.sort_values("store_id").itertuples():
-        if r.city not in CITY_LATLON:
+    for r in sorted(stores, key=lambda s: s["store_id"]):
+        if r["city"] not in CITY_LATLON:
             continue
-        k = seen.get(r.city, 0); seen[r.city] = k + 1
-        la, lo = CITY_LATLON[r.city]; dy, dx = ring[k % len(ring)]
-        out[r.store_id] = (la + dy, lo + dx)
+        k = seen.get(r["city"], 0); seen[r["city"]] = k + 1
+        la, lo = CITY_LATLON[r["city"]]; dy, dx = ring[k % len(ring)]
+        out[r["store_id"]] = (la + dy, lo + dx)
     return out

@@ -9,8 +9,21 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", default=str(root / "manyavar-vch3-data" / "csv"))
     ap.add_argument("--out", default=str(root / "nodal-stock-mover" / "data"))
+    ap.add_argument("command", nargs="?", choices=["daily", "schedule", "watch", "export"], help="daily = full pipeline now; schedule = run every day at NODAL_DAILY_TIME; watch = process new datasets dropped in the inbox")
+    ap.add_argument("--force", action="store_true"); ap.add_argument("--no-ai", action="store_true")
     ap.add_argument("--backtest", action="store_true", help="re-run the rolling-origin forecast back-test and write docs/FORECAST_BACKTEST.json")
     a = ap.parse_args()
+    if a.command:
+        import logging, json as _j
+        logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
+        from . import pipeline
+        if a.command == "daily":
+            out = pipeline.daily(force=a.force, with_ai=not a.no_ai)
+            print(_j.dumps({k: v for k, v in out.items() if k != "bundle"}, indent=1, default=str)); return
+        if a.command == "schedule":
+            return pipeline.schedule_forever()
+        if a.command == "watch":
+            return pipeline.watch_inbox()
     if a.backtest:
         from .backtest_report import write
         write(a.data, root / "nodal-stock-mover" / "docs" / "FORECAST_BACKTEST.json")

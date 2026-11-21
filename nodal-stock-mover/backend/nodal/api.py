@@ -1,48 +1,126 @@
-"""FastAPI app: JSON API + static UI. The plan is computed on demand from the CSVs and cached in memory."""
+"""FastAPI app: JSON API + static PWA.
+
+Modes (NODAL_MODE): "auto" (default) serves the latest published run bundle when one exists, otherwise computes the plan from the CSVs;
+"published" never computes (light public deployment: no ML libraries needed); "compute" always recomputes.
+Decisions are stored server-side (append-only audit log). Approving a plan is NOT executing a stock transfer.
+"""
 from __future__ import annotations
-import csv, io, os, threading
+import csv, io, json, logging, os, re, threading
 from pathlib import Path
-from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
+from typing import Literal
+from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
-from .engine import run
-from .loader import DataError
+from . import db, pipeline, geo
 
+log = logging.getLogger("nodal.api")
 ROOT = Path(__file__).resolve().parents[3]
 DATA_DIR = Path(os.environ.get("NODAL_DATA_DIR", ROOT / "manyavar-vch3-data" / "csv"))
 FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
+MODE = os.environ.get("NODAL_MODE", "auto")
+BUNDLE = os.environ.get("NODAL_BUNDLE")
 
-app = FastAPI(title="NODAL — Stock Mover (Brief B)", version="0.1.0")
+app = FastAPI(title="NODAL — Stock Mover (Brief B)", version="0.2.0")
 _lock = threading.Lock()
 _state: dict = {}
 
 
-def _result(refresh: bool = False) -> dict:
+def _load(refresh=False) -> dict:
     with _lock:
         if refresh or "r" not in _state:
-            try:
-                _state["r"] = run(str(DATA_DIR))
-                _state["by_id"] = {a["id"]: a for a in _state["r"]["actions"]}
-                _state["error"] = None
-            except DataError as e:
-                _state["error"] = str(e)
-                raise HTTPException(422, detail=str(e))
+            b = None if MODE == "compute" else pipeline.load_bundle(Path(os.environ.get("NODAL_BUNDLE")) if os.environ.get("NODAL_BUNDLE") else None)
+            if b is not None:
+                pipeline.import_bundle_to_db(b)
+                _state.update(r=b, run_id=b["run_id"], created_at=b["created_at"], source="published")
+            elif MODE == "published":
+                raise HTTPException(503, detail="No published run found. Run `python -m nodal.cli daily` and commit published/latest.json.gz.")
+            else:
+                from .engine import run                      # heavy imports only when computing
+                from .loader import DataError
+                try:
+                    r = run(str(DATA_DIR))
+                except DataError as e:
+                    raise HTTPException(422, detail=str(e))
+                run_id = "manual-" + db.now().replace(":", "").replace("-", "")[:15]
+                db.create_run(run_id, "manual", r["manifest"]["as_of"], r["manifest"]["source_hash"], status="completed")
+                db.store_moves(run_id, r["actions"])
+                r["reviews"] = {}
+                _state.update(r=r, run_id=run_id, created_at=db.now(), source="computed")
+            _state["by_id"] = {a["id"]: a for a in _state["r"]["actions"]}
         return _state["r"]
+
+
+def _result(refresh=False):
+    return _load(refresh)
+
+
+def _reviews() -> dict:
+    return _state["r"].get("reviews") or {}
 
 
 LIGHT = ["id", "type", "type_label", "reason", "reason_label", "urgency", "priority_tier", "sku_id", "style_id", "style_name", "category", "size", "source", "destination", "qty",
          "dispatch_date", "arrival_date", "lead_days", "unit_mrp", "value_mrp", "cover_before_days", "cover_after_days", "confidence", "flags", "supply_basis", "requires_approval", "status", "explanation"]
 
 
+def _ai_brief(mid: str) -> dict:
+    rv = _reviews().get(mid)
+    if not rv:
+        return {"ai_state": "none", "ai_outcome": None, "has_alt": False}
+    return {"ai_state": rv["state"], "ai_outcome": rv.get("outcome"), "has_alt": bool(rv.get("alternative"))}
+
+
+def _actor(x_client_id: str | None) -> str:
+    return "judge-" + re.sub(r"[^A-Za-z0-9_-]", "", x_client_id or "")[:24] if x_client_id else "anonymous"
+
+
+@app.get("/healthz")
+def healthz():
+    out = {"ok": True, "mode": MODE, "db": db.healthy()}
+    try:
+        _load()
+        out.update(run_id=_state["run_id"], source=_state["source"])
+    except HTTPException as e:
+        out.update(ok=False, error=e.detail)
+    out["ok"] = out["ok"] and out["db"]["ok"]
+    return JSONResponse(out, status_code=200 if out["ok"] else 503)
+
+
 @app.get("/api/overview")
 def overview(refresh: bool = False):
     r = _result(refresh)
-    return {"manifest": r["manifest"], "summary": r["summary"], "validation": r["validation"], "stores": r["stores"]}
+    return {"manifest": r["manifest"], "summary": r["summary"], "validation": r["validation"], "stores": r["stores"], "run_id": _state["run_id"], "created_at": _state["created_at"], "source": _state["source"]}
+
+
+@app.get("/api/status")
+def status():
+    """Landing-page numbers for the phone dashboard."""
+    r = _result()
+    s = r["summary"]
+    dec = db.current_decisions(_state["run_id"])
+    runs = db.list_runs(1)
+    rv = _reviews()
+    counts = {}
+    for v in rv.values():
+        counts[v["state"]] = counts.get(v["state"], 0) + 1
+    run = db.get_run(_state["run_id"]) or {}
+    return {"run_id": _state["run_id"], "created_at": _state["created_at"], "as_of": r["manifest"]["as_of"], "source": _state["source"],
+            "moves": s["total"]["actions"], "units": s["total"]["units"], "value_mrp": s["total"]["value_mrp"], "needs_signoff": s["needs_approval"],
+            "awaiting": s["total"]["actions"] - sum(1 for d in dec.values() if d["decision"] in ("approved", "approved_alternative", "rejected")),
+            "approved": sum(1 for d in dec.values() if d["decision"] in ("approved", "approved_alternative")), "rejected": sum(1 for d in dec.values() if d["decision"] == "rejected"),
+            "ai": {"reviews_completed": counts.get("completed", 0), "failed": counts.get("failed", 0), "pending": counts.get("pending", 0), "skipped": counts.get("skipped", 0),
+                   "alternatives": sum(1 for v in rv.values() if v.get("alternative")), "flagged": sum(1 for v in rv.values() if v.get("outcome") == "FLAG"), "model": next((v.get("model") for v in rv.values() if v.get("model")), None)},
+            "dq_warnings": sum(1 for f in r["audit"]["findings"] if f["severity"] in ("warn", "error")),
+            "rules_passed": sum(1 for x in r["validation"]["rules"] if x["passed"]), "rules_total": len(r["validation"]["rules"]),
+            "automation": {"last_run_status": (runs[0]["status"] if runs else run.get("status")), "last_run_at": runs[0]["created_at"] if runs else None, "ai_status": run.get("ai_status"),
+                           "schedule": os.environ.get("NODAL_DAILY_TIME", "06:00") + " " + os.environ.get("NODAL_TZ", "Asia/Kolkata")}}
 
 
 @app.post("/api/run")
 def rerun():
+    if MODE == "published":
+        raise HTTPException(501, "this deployment serves published runs only")
     r = _result(True)
     return {"ok": True, "actions": len(r["actions"]), "runtime_seconds": r["manifest"]["runtime_seconds"]}
 
@@ -50,7 +128,8 @@ def rerun():
 @app.get("/api/actions")
 def actions():
     r = _result()
-    return [{k: a[k] for k in LIGHT} for a in r["actions"]]
+    dec = db.current_decisions(_state["run_id"])
+    return [{**{k: a[k] for k in LIGHT}, **_ai_brief(a["id"]), "decision": (dec.get(a["id"]) or {}).get("decision")} for a in r["actions"]]
 
 
 @app.get("/api/actions/{aid}")
@@ -59,7 +138,101 @@ def action(aid: str):
     a = _state["by_id"].get(aid)
     if not a:
         raise HTTPException(404, "unknown action id")
-    return a
+    rv = _reviews().get(aid)
+    return {**a, "review": rv, "decision": db.current_decisions(_state["run_id"]).get(aid)}
+
+
+class DecisionIn(BaseModel):
+    move_id: str
+    decision: Literal["approved", "approved_alternative", "rejected", "cleared"]
+    reason: str | None = None
+    confirm_high_value: bool = False
+
+
+@app.post("/api/decisions")
+def decide(body: DecisionIn, x_client_id: str | None = Header(default=None)):
+    _result()
+    a = _state["by_id"].get(body.move_id)
+    if not a:
+        raise HTTPException(404, "unknown move")
+    rv = _reviews().get(body.move_id) or {}
+    alt = rv.get("alternative")
+    target = alt["action"] if (body.decision == "approved_alternative" and alt) else a
+    if body.decision == "approved_alternative" and not alt:
+        raise HTTPException(422, "no validated AI alternative exists for this move")
+    if body.decision in ("approved", "approved_alternative") and target["requires_approval"] and not body.confirm_high_value:
+        raise HTTPException(409, {"error": "needs_confirmation", "message": f"This move is worth ₹{target['value_mrp']:,} at MRP (above the sign-off limit). Confirm explicitly."})
+    actor = _actor(x_client_id)
+    out = db.record_decision(_state["run_id"], body.move_id, body.decision, actor, body.reason, original={k: a[k] for k in LIGHT}, ai_alternative=alt,
+                             confirmed=body.confirm_high_value)
+    if out["written"]:
+        db.audit("decision", actor, run=_state["run_id"], move=body.move_id, decision=body.decision)
+    return {**out, "note": "This approves the proposed plan only. It does not dispatch any stock."}
+
+
+@app.get("/api/decisions")
+def decisions():
+    _result()
+    return {"run_id": _state["run_id"], "current": db.current_decisions(_state["run_id"])}
+
+
+@app.get("/api/ai")
+def ai_overview():
+    r = _result()
+    rv = _reviews()
+    by = {a["id"]: a for a in r["actions"]}
+    rows = []
+    for mid, v in rv.items():
+        if v["state"] in ("completed", "failed", "pending"):
+            a = by.get(mid)
+            if a:
+                rows.append({"id": mid, "state": v["state"], "outcome": v.get("outcome"), "error": v.get("error"), "review": v.get("review"), "alternative": v.get("alternative"),
+                             "move": {k: a[k] for k in ("type_label", "reason_label", "sku_id", "style_name", "qty", "source", "destination", "value_mrp", "requires_approval", "explanation", "arrival_date", "urgency")}})
+    order = {"ALTERNATIVE": 0, "FLAG": 1, "INSUFFICIENT_EVIDENCE": 2, "CONFIRM": 3, None: 4}
+    rows.sort(key=lambda x: (order.get(x["outcome"], 4), -x["move"]["value_mrp"]))
+    states = {}
+    for v in rv.values():
+        states[v["state"]] = states.get(v["state"], 0) + 1
+    outcomes = {}
+    for x in rows:
+        outcomes[x["outcome"] or x["state"]] = outcomes.get(x["outcome"] or x["state"], 0) + 1
+    cands = sum(len((x["review"] or {}).get("candidates_considered", [])) for x in rows)
+    return {"states": states, "outcomes": outcomes, "candidates_evaluated": cands, "reviews": rows,
+            "note": "AI conclusions are advisory and kept separate from the deterministic validator. Model-stated confidence is not a calibrated probability."}
+
+
+@app.get("/api/runs")
+def runs():
+    _result()
+    return [{k: v for k, v in r.items() if k != "error" or v} for r in db.list_runs(40)]
+
+
+@app.get("/api/history")
+def history():
+    _result()
+    log_ = db.decision_log(None, 300)
+    by = {}
+    for rid in {x["run_id"] for x in log_}:
+        by[rid] = {m["id"]: m for m in db.moves_of(rid)}
+    out = []
+    for x in log_:
+        m = by.get(x["run_id"], {}).get(x["move_id"], {})
+        out.append({"ts": x["ts"], "run_id": x["run_id"], "move_id": x["move_id"], "decision": x["decision"], "actor": x["actor"], "reason": x["reason"], "confirmed": x["confirmed_high_value"],
+                    "had_ai_alternative": bool(x["ai_alternative"]), "move": {k: m.get(k) for k in ("type_label", "sku_id", "style_name", "qty", "source", "destination", "value_mrp")}})
+    return {"decisions": out, "audit": [{"ts": e["ts"], "event": e["event"], "actor": e["actor"]} for e in _audit_tail()],
+            "outcomes_recorded": _count_outcomes(), "note": "Outcomes (actual moves, later sales) are recorded here once supplied; no model or rule is retrained from single decisions."}
+
+
+def _audit_tail(n=40):
+    import sqlalchemy as sa
+    with db.engine().connect() as c:
+        return [dict(r) for r in c.execute(sa.select(db.audit_events).order_by(db.audit_events.c.id.desc()).limit(n)).mappings()]
+
+
+def _count_outcomes():
+    import sqlalchemy as sa
+    with db.engine().connect() as c:
+        return c.execute(sa.select(sa.func.count()).select_from(db.outcomes)).scalar() or 0
 
 
 @app.get("/api/audit")
@@ -73,27 +246,28 @@ def safety():
     return {"blocked_samples": r["blocked_samples"], "blocked_counts": r["summary"]["blocked_counts"], "unresolved": r["unresolved"], "excluded": r["excluded"], "validation": r["validation"]}
 
 
+@app.get("/api/manifest")
+def manifest():
+    return _result()["manifest"]
+
+
 @app.get("/api/map/products")
 def map_products():
     r = _result()
     seen = {}
     for p in r["positions"]:
         seen.setdefault(p["style"], {"style": p["style"], "name": p["style_name"], "category": p["category"], "sizes": set()})["sizes"].add(p["size"])
-    return {"categories": sorted({v["category"] for v in seen.values()}),
-            "styles": [{**v, "sizes": sorted(v["sizes"])} for v in sorted(seen.values(), key=lambda v: (v["category"], v["style"]))]}
+    return {"categories": sorted({v["category"] for v in seen.values()}), "styles": [{**v, "sizes": sorted(v["sizes"])} for v in sorted(seen.values(), key=lambda v: (v["category"], v["style"]))]}
 
 
 @app.get("/api/map")
 def map_view(style: str | None = None, category: str | None = None, size: str | None = None):
-    """Per-store demand / stock / gap for one product (style, optionally one size) or a whole category, plus the moves planned for it."""
-    from . import geo
     r = _result()
     if not style and not category:
         raise HTTPException(422, "pass style= or category=")
     sel = [p for p in r["positions"] if (style is None or p["style"] == style) and (category is None or p["category"] == category) and (size is None or p["size"] == size)]
     stores = {s["store_id"]: s for s in r["stores"]}
-    import pandas as pd
-    coords = geo.place(pd.DataFrame(r["stores"]).assign(city=lambda x: x.city))
+    coords = geo.place(r["stores"])
     agg = {}
     for p in sel:
         a = agg.setdefault(p["store"], {"demand_28d": 0.0, "on_hand": 0, "in_transit": 0, "plan_in": 0, "plan_out": 0, "units84": 0})
@@ -102,17 +276,13 @@ def map_view(style: str | None = None, category: str | None = None, size: str | 
     for sid, a in agg.items():
         if sid not in coords:
             continue
-        stock = a["on_hand"] + a["in_transit"]
-        after = stock + a["plan_in"] - a["plan_out"]
-        daily = a["demand_28d"] / 28
+        stock = a["on_hand"] + a["in_transit"]; after = stock + a["plan_in"] - a["plan_out"]; daily = a["demand_28d"] / 28
         out.append({"store": sid, "city": stores[sid]["city"], "tier": stores[sid]["tier"], "lat": coords[sid][0], "lon": coords[sid][1], "demand_28d": round(a["demand_28d"], 1), "units_84d": a["units84"],
                     "stock": stock, "plan_in": a["plan_in"], "plan_out": a["plan_out"], "stock_after_plan": after, "cover_days": None if daily < 1e-6 else round(stock / daily, 1),
                     "cover_after_days": None if daily < 1e-6 else round(after / daily, 1), "gap_units": round(max(0.0, a["demand_28d"] - after), 1), "surplus_units": round(max(0.0, after - a["demand_28d"] * 3), 1)})
     ids = {p["sku"] for p in sel}
-    moves = []
-    for a in r["actions"]:
-        if a["sku_id"] in ids and (a["source"] in coords or a["source"] == "WH-KOL") and (a["destination"] in coords or a["destination"] == "WH-KOL"):
-            moves.append({"id": a["id"], "type": a["type"], "from": a["source"], "to": a["destination"], "qty": a["qty"], "sku": a["sku_id"]})
+    moves = [{"id": a["id"], "type": a["type"], "from": a["source"], "to": a["destination"], "qty": a["qty"], "sku": a["sku_id"]} for a in r["actions"]
+             if a["sku_id"] in ids and (a["source"] in coords or a["source"] == "WH-KOL") and (a["destination"] in coords or a["destination"] == "WH-KOL")]
     wh = [w for w in r["warehouse"] if w["sku"] in ids]
     la, lo = geo.CITY_LATLON[geo.WAREHOUSE_CITY]
     return {"stores": out, "moves": moves, "warehouse": {"lat": la, "lon": lo, "on_hand": sum(w["on_hand"] for w in wh), "plan_out": sum(w["plan_out"] for w in wh)},
@@ -121,39 +291,77 @@ def map_view(style: str | None = None, category: str | None = None, size: str | 
 
 @app.get("/api/backtest")
 def backtest():
+    b = _result().get("backtest")
+    if b:
+        return b
     p = Path(__file__).resolve().parents[2] / "docs" / "FORECAST_BACKTEST.json"
     if not p.exists():
         raise HTTPException(404, "back-test not generated yet: run  python -m nodal.cli --backtest")
-    import json
     return json.loads(p.read_text())
-
-
-@app.get("/api/manifest")
-def manifest():
-    return _result()["manifest"]
 
 
 @app.get("/api/export.csv")
 def export_csv():
     r = _result()
-    cols = ["id", "urgency", "type_label", "reason_label", "sku_id", "style_name", "category", "size", "source", "destination", "qty", "dispatch_date", "arrival_date", "lead_days",
-            "unit_mrp", "value_mrp", "cover_before_days", "cover_after_days", "confidence", "requires_approval", "supply_basis", "flags", "explanation"]
+    dec = db.current_decisions(_state["run_id"])
+    cols = ["id", "decision", "urgency", "type_label", "reason_label", "sku_id", "style_name", "category", "size", "source", "destination", "qty", "dispatch_date", "arrival_date", "lead_days",
+            "unit_mrp", "value_mrp", "cover_before_days", "cover_after_days", "confidence", "requires_approval", "ai_outcome", "flags", "explanation"]
     buf = io.StringIO()
     w = csv.writer(buf)
     w.writerow(cols)
     for a in r["actions"]:
-        w.writerow([";".join(a[c]) if c == "flags" else a[c] for c in cols])
-    return StreamingResponse(iter([buf.getvalue()]), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=nodal_actions.csv"})
+        row = {**a, "decision": (dec.get(a["id"]) or {}).get("decision", "pending"), "ai_outcome": _ai_brief(a["id"])["ai_outcome"] or ""}
+        w.writerow([";".join(row[c]) if c == "flags" else row.get(c) for c in cols])
+    return StreamingResponse(iter([buf.getvalue()]), media_type="text/csv", headers={"Content-Disposition": f"attachment; filename=nodal_{_state['run_id']}.csv"})
 
 
-@app.exception_handler(DataError)
-def data_error(_, exc):
-    return JSONResponse(status_code=422, content={"detail": str(exc)})
+# ---------------------------------------------------------------- operator endpoints (token-protected; disabled unless NODAL_ADMIN_TOKEN is set)
+def _admin(token: str | None):
+    want = os.environ.get("NODAL_ADMIN_TOKEN")
+    if not want or token != want:
+        raise HTTPException(403, "admin endpoints are disabled or the token is wrong")
 
 
+@app.put("/api/admin/inbox/{name}")
+async def upload(name: str, request: Request, x_admin_token: str | None = Header(default=None)):
+    """Method 2: operator uploads one dataset CSV (e.g. stock_snapshot.csv) into the inbox."""
+    _admin(x_admin_token)
+    from .loader import REQUIRED
+    base = name[:-4] if name.endswith(".csv") else name
+    if base not in REQUIRED and base not in ("rules_extra",):
+        raise HTTPException(422, f"unknown dataset '{base}'; expected one of {sorted(REQUIRED)}")
+    body = await request.body()
+    if not body or len(body) > 60_000_000:
+        raise HTTPException(422, "empty or too large")
+    d = pipeline.inbox_dir(); d.mkdir(parents=True, exist_ok=True)
+    (d / f"{base}.csv").write_bytes(body)
+    db.audit("dataset_uploaded", "operator", name=base, bytes=len(body))
+    return {"saved": f"{base}.csv", "bytes": len(body), "complete": not pipeline._complete(d)}
+
+
+@app.post("/api/admin/run")
+def admin_run(force: bool = False, x_admin_token: str | None = Header(default=None)):
+    _admin(x_admin_token)
+    if MODE == "published":
+        raise HTTPException(501, "this deployment does not compute plans; run the pipeline on the operator machine")
+    threading.Thread(target=lambda: pipeline.daily(force=force), daemon=True).start()
+    return {"started": True}
+
+
+# ---------------------------------------------------------------- PWA + static
 app.mount("/static", StaticFiles(directory=FRONTEND), name="static")
+
+
+@app.get("/manifest.webmanifest")
+def manifest_file():
+    return FileResponse(FRONTEND / "manifest.webmanifest", media_type="application/manifest+json")
+
+
+@app.get("/sw.js")
+def service_worker():
+    return FileResponse(FRONTEND / "sw.js", media_type="application/javascript", headers={"Service-Worker-Allowed": "/", "Cache-Control": "no-cache"})
 
 
 @app.get("/")
 def index():
-    return FileResponse(FRONTEND / "index.html")
+    return FileResponse(FRONTEND / "index.html", headers={"Cache-Control": "no-cache"})
