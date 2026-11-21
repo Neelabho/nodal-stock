@@ -54,6 +54,6 @@ SOURCES = {
     "seasonality_clip": "ASSUMED",
     "ageing_min_age_days": "ASSUMED",
     "ageing_min_cover_days": "ASSUMED",
-    "pullback_destination": "ASSUMED: brief does not define pull-back destination",
+    "pullback_destination": "CONFIRMED by the builder: a store that sells the SKU first, otherwise the warehouse (the brief does not define it)",
     "pullback_min_units": "ASSUMED",
 }

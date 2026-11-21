@@ -10,7 +10,7 @@ from collections import defaultdict
 from . import db
 
 log = logging.getLogger("nodal.shipments")
-VERSION = "s1"
+VERSION = "s2"
 TIER_NAME = {1: "Critical", 2: "High", 3: "Normal", 4: "Housekeeping"}
 PLAIN = {"under_stocked": "running low", "scheduled_inbound": "running low", "display_minimum": "short of its display minimum",
          "ageing_relocation": "receiving older stock that sells here", "surplus_rebalance": "topped up from a store with spare stock",
@@ -78,9 +78,9 @@ def facts_for(sh: dict) -> dict:
     return f
 
 
-SYSTEM = ("You write short plain-English summaries for a store manager who must approve or reject a stock shipment. Use ONLY the facts given. "
-          "At most two sentences and under 220 characters. No jargon: never write 'cover', 'velocity', 'SKU', 'forecast' or 'ledger'. "
-          "Say what is happening and why in everyday words. Any number you write must appear in the facts exactly. Do not tell the reader what to do (no 'approve' or 'restock' advice); just describe what is happening and why. Do not invent anything.")
+SYSTEM = ("You rewrite a draft summary of a stock shipment for a store manager into warm, clear plain English. Keep the city or store name from the draft. "
+          "Use at most two sentences and under 220 characters. Keep every number exactly as in the draft or facts; add no other numbers, reasons or claims. "
+          "No jargon: never write 'cover', 'velocity', 'SKU', 'forecast' or 'ledger'. Do not tell the reader what to do (no 'approve' or 'restock' advice). Do not mention approval or sign-off.")
 SCHEMA = {"type": "object", "properties": {"summary": {"type": "string", "maxLength": 240}}, "required": ["summary"]}
 
 
@@ -111,7 +111,8 @@ def summarise(shipments: list[dict], client=None) -> dict:
             available = False
     for sh in shipments:
         facts = facts_for(sh)
-        fj = json.dumps(facts, sort_keys=True, default=str)
+        facts_llm = {**facts, "draft": template_summary(sh)}
+        fj = json.dumps(facts_llm, sort_keys=True, default=str)
         model = getattr(client, "model", "none") if client is not None else "none"
         key = hashlib.sha256(f"{VERSION}|{model}|{fj}".encode()).hexdigest()
         hit = db.get_text(key) if client is not None else None
@@ -124,7 +125,7 @@ def summarise(shipments: list[dict], client=None) -> dict:
                 try:
                     raw = client.chat_json(SYSTEM, fj + ("" if attempt == 1 else "\nYour last answer used numbers or words not allowed. Use only numbers from the facts and no jargon."), SCHEMA, max_tokens=160)
                     t = str(raw.get("summary", "")).strip()
-                    if t and _grounded(t, facts):
+                    if t and _grounded(t, facts_llm) and (sh["city"] or sh["store"]).split()[0].lower() in t.lower() or (t and _grounded(t, facts_llm) and sh["store"].lower() in t.lower()):
                         text = t
                         break
                 except Exception as e:  # noqa: BLE001

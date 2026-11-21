@@ -5,6 +5,8 @@ from pathlib import Path
 
 
 def load_env(path: Path | None = None) -> None:
+    if os.environ.get("NODAL_NO_DOTENV"):           # tests set this so the real .env (and its API keys) can never leak into a test run
+        return
     p = path or (Path(__file__).resolve().parents[2] / ".env")
     if not p.exists():
         return

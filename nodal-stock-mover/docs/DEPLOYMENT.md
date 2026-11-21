@@ -70,3 +70,8 @@ Copy `.env.example` for all settings. Run all tests: `.venv/bin/python -m pytest
 ## Unresolved business assumptions (unchanged, still configurable)
 Pull-back destination (WH-KOL unless a store sells the SKU), ageing thresholds (180 days), 14/30-day cover targets, and treating warehouse inbound
 marked "Planned" as reliable. See `backend/nodal/policy.py` and `DECISIONS.md`.
+
+## v3 additions
+- **Shipments:** the pipeline groups moves into store shipments and writes plain-language summaries with the local model (cached; template fallback). They are published in the bundle, so the public app shows them with no AI at request time.
+- **Ask:** `POST /api/ask`. General questions use Sarvam (`SARVAM_API_KEY`, `SARVAM_MODEL`); the router sends only questions with no store, SKU or plan words, plus a fixed block of public rules. Plan questions are answered locally from shipment facts. Answers are cached in `qa_cache`; limits `QA_PER_MINUTE`, `QA_PER_DAY`, `QA_GLOBAL_PER_DAY` return HTTP 429 with `Retry-After`. On Render set `SARVAM_API_KEY` in the service's environment settings yourself.
+- **Add data:** local app only. `PUT /api/inbox/<table>` validates and stores a CSV; uploaded files overlay the supplied dataset; `POST /api/pipeline/run` recalculates in the background with stage progress. Disabled when `NODAL_MODE=published`.
