@@ -495,7 +495,30 @@ def map_view(style: str | None = None, category: str | None = None, size: str | 
              if a["sku_id"] in ids and (a["source"] in coords or a["source"] == "WH-KOL") and (a["destination"] in coords or a["destination"] == "WH-KOL")]
     wh = [w for w in r["warehouse"] if w["sku"] in ids]
     la, lo = geo.CITY_LATLON[geo.WAREHOUSE_CITY]
-    return {"stores": out, "moves": moves, "warehouse": {"lat": la, "lon": lo, "on_hand": sum(w["on_hand"] for w in wh), "plan_out": sum(w["plan_out"] for w in wh)},
+    # next stops: where this product is being sent, ranked by demand, with each place's highest-demand SKU
+    inc, arr, top_in = {}, {}, {}
+    by_pos = {}
+    for p in sel:
+        by_pos.setdefault(p["store"], []).append(p)
+    for a in r["actions"]:
+        if a["sku_id"] in ids and a["type"] != "PULL_BACK" and a["destination"] in coords:
+            inc[a["destination"]] = inc.get(a["destination"], 0) + a["qty"]
+            arr[a["destination"]] = min(arr.get(a["destination"], a["arrival_date"]), a["arrival_date"])
+            cur = top_in.get(a["destination"])
+            if not cur or a["qty"] > cur["qty"]:
+                top_in[a["destination"]] = {"sku": a["sku_id"], "style": a["style_name"], "size": a["size"], "qty": a["qty"]}
+    dem = {o["store"]: o["demand_28d"] for o in out}
+    stops = []
+    for sid, units in inc.items():
+        ps = by_pos.get(sid, [])
+        best = max(ps, key=lambda p: p["daily"]) if ps else None
+        stops.append({"store": sid, "city": stores[sid]["city"], "tier": stores[sid]["tier"], "incoming_units": units, "arrival": arr[sid], "demand_28d": dem.get(sid, 0.0),
+                      "top_sku": None if not best else {"sku": best["sku"], "style": best["style_name"], "size": best["size"], "demand_28d": round(best["daily"] * 28, 1), "stock": best["on_hand"] + best["in_transit"]},
+                      "top_incoming": top_in.get(sid)})
+    stops.sort(key=lambda s: (-s["demand_28d"], s["store"]))
+    for i, s in enumerate(stops[:12], 1):
+        s["rank"] = i
+    return {"stores": out, "moves": moves, "next_stops": stops[:12], "warehouse": {"lat": la, "lon": lo, "on_hand": sum(w["on_hand"] for w in wh), "plan_out": sum(w["plan_out"] for w in wh)},
             "note": "Store positions are approximate city-centre placements (the data has cities, not coordinates)."}
 
 

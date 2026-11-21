@@ -149,3 +149,17 @@ def test_map_api_returns_stores_and_moves():
     m = c.get("/api/map", params={"style": prods["styles"][0]["style"]}).json()
     assert len(m["stores"]) > 10 and all(-90 < s["lat"] < 90 for s in m["stores"])
     assert c.get("/api/map").status_code == 422
+
+
+def test_map_next_stops_are_ranked_by_demand_and_show_the_top_sku():
+    from fastapi.testclient import TestClient
+    from nodal.api import app
+    c = TestClient(app)
+    m = c.get("/api/map", params={"category": "Kurta Set"}).json()
+    stops = m["next_stops"]
+    assert stops and [s["rank"] for s in stops] == list(range(1, len(stops) + 1))
+    d = [s["demand_28d"] for s in stops]
+    assert d == sorted(d, reverse=True)                                  # ranked by demand
+    for s in stops:
+        assert s["incoming_units"] > 0 and s["arrival"] and s["top_sku"]["sku"].startswith("KUR")
+        assert s["top_sku"]["demand_28d"] <= s["demand_28d"] + 1e-6       # the top SKU cannot out-demand its store total
