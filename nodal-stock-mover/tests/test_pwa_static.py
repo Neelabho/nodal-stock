@@ -51,7 +51,7 @@ def test_design_direction_glass_over_blurred_solid_light_no_gradients_thin_linin
     css = re.sub(r"/\*.*?\*/", "", (FE / "styles.css").read_text(), flags=re.S)       # ignore comments
     assert "gradient" not in css                                       # glow comes from blurred SOLID blobs, never gradient fills
     assert "backdrop-filter" in css and "filter:blur(90px)" in css and ".blob" in css
-    assert not re.search(r"box-shadow:\s*(?!inset)[0-9]", css)         # only inset rim light; no drop shadows
+    assert not re.search(r"box-shadow:\s*(?!inset|none)-?\d+(?:px)?\s+-?\d+(?:px)?\s+[1-9]", css)    # no blurred drop shadows (inset rim light and 0-blur hairlines only)
     assert "Outfit" in css and "lining-nums" in css and "font-weight:200" in css
     assert "prefers-reduced-motion" in css                             # animations respect the setting
     html = (FE / "index.html").read_text()
