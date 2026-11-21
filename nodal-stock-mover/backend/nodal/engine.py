@@ -20,7 +20,10 @@ REASON_LABEL = {
 
 
 def _fmt(x, nd=0):
-    return "unlimited" if x is None else f"{x:.{nd}f}"
+    """Cover in days; very long cover is shown as '1y+' because 45,000 days is meaningless to a person."""
+    if x is None or x >= 365:
+        return "1y+"
+    return f"{x:.{nd}f}d"
 
 
 def explain(a: dict, seas: dict, stores: pd.DataFrame, H: int) -> str:
@@ -47,19 +50,19 @@ def explain(a: dict, seas: dict, stores: pd.DataFrame, H: int) -> str:
         short = " Warehouse short, so allocated to equalise cover across stores." if sup.get("shortfall") else ""
         sched = f" Scheduled: depends on planned inbound ({a['dispatch_date']})." if r == "scheduled_inbound" else ""
         return (f"{head} {src}→{dst}, arrives {a['arrival_date']} ({a['lead_days']}d): sells {rc['velocity_used']:.2f}/day{fest} → cover at arrival "
-                f"{_fmt(rc['cover_before_days'])}d, {_fmt(rc['cover_after_days'])}d after; warehouse {sup['warehouse_available_before']}→{sup['warehouse_available_after']}.{short}{sched}")
+                f"{_fmt(rc['cover_before_days'])}, {_fmt(rc['cover_after_days'])} after; warehouse {sup['warehouse_available_before']}→{sup['warehouse_available_after']}.{short}{sched}")
     if a["type"] == "STORE_TO_STORE":
-        keep = f"{src} keeps {_fmt(dn['sku_cover_after_days'])}{'' if dn['sku_cover_after_days'] is None else 'd'} cover (≥30d)"
+        keep = f"{src} keeps {_fmt(dn['sku_cover_after_days'])} cover (≥30d)"
         if r == "ageing_relocation":
             return (f"{head} {src}→{dst}, arrives {a['arrival_date']} ({a['lead_days']}d): ageing stock (oldest unit {int(dn['oldest_unit_age_days'])}d, "
                     f"{'no sales in ' + str(dn['in_stock_days_84d']) + ' in-stock days' if dn['units_84d'] == 0 else 'cover ' + _fmt(dn['sku_cover_before_days']) + 'd'}) moves to {dst} where it sells {rc['velocity_used']:.2f}/day{fest}; {keep}.")
         if r == "over_capacity":
-            return f"{head} {src}→{dst}, arrives {a['arrival_date']}: {src} is over capacity; {dst} sells {rc['velocity_used']:.2f}/day{fest} with {_fmt(rc['cover_before_days'])}d cover; {keep}."
+            return f"{head} {src}→{dst}, arrives {a['arrival_date']}: {src} is over capacity; {dst} sells {rc['velocity_used']:.2f}/day{fest} with {_fmt(rc['cover_before_days'])} cover; {keep}."
         if r == "display_minimum":
             d_ = e["display"]
             return f"{head} {src}→{dst}: {dst} {d_['category']} below minimum display ({d_['units_before_plan']} vs {d_['minimum']}) and warehouse has none; {keep}; {src} stays above its own display minimum."
-        return (f"{head} {src}→{dst}, arrives {a['arrival_date']} ({a['lead_days']}d): {dst} sells {rc['velocity_used']:.2f}/day{fest}, cover {_fmt(rc['cover_before_days'])}d→{_fmt(rc['cover_after_days'])}d; "
-                f"{src} has surplus ({_fmt(dn['sku_cover_before_days'])}d cover) and {keep}.")
+        return (f"{head} {src}→{dst}, arrives {a['arrival_date']} ({a['lead_days']}d): {dst} sells {rc['velocity_used']:.2f}/day{fest}, cover {_fmt(rc['cover_before_days'])}→{_fmt(rc['cover_after_days'])}; "
+                f"{src} has surplus ({_fmt(dn['sku_cover_before_days'])} cover) and {keep}.")
     # pull back
     if r == "over_capacity":
         c = e["capacity"]

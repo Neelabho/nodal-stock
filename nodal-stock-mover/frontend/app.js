@@ -4,13 +4,16 @@ const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const inr = (n) => "₹" + Number(n).toLocaleString("en-IN");
 const lakh = (n) => "₹" + (n / 1e5).toLocaleString("en-IN", { maximumFractionDigits: 1 }) + " L";
 const num = (n) => Number(n).toLocaleString("en-IN");
-const cov = (x) => (x === null || x === undefined ? "∞" : x < 100 ? x.toFixed(0) + "d" : "99d+");
+const cov = (x) => (x === null || x === undefined || x >= 365 ? "1y+" : x < 100 ? x.toFixed(0) + "d" : x.toFixed(0) + "d");
 
 const S = { tab: "overview", ov: null, acts: [], f: { q: "", type: "", reason: "", urgency: "", store: "", cat: "", conf: "", appr: false, dec: "", sort: "default" }, page: 0, dec: {}, quality: null, safety: null };
 const PAGE = 50;
+const MQ = window.matchMedia("(max-width:700px)");
+const isMobile = () => MQ.matches;
 const ico = (n) => `<i data-lucide="${n}"></i>`;
 let _iconQueued = false;
 new MutationObserver(() => { if (_iconQueued || !window.lucide) return; _iconQueued = true; requestAnimationFrame(() => { _iconQueued = false; window.lucide.createIcons(); }); }).observe(document.body, { childList: true, subtree: true });
+const MTITLES = { overview: "Today", register: "Moves", safety: "Checks", map: "Map", quality: "Data quality", model: "Forecast", method: "Method" };
 const TITLES = { overview: "Overview", register: "Action register", map: "Hotspot map", safety: "Rules & gaps", quality: "Data quality", model: "Forecast model", method: "Method" };
 
 function decKey() { return "nodal-decisions-" + (S.ov ? S.ov.manifest.source_hash : "x"); }
@@ -24,6 +27,7 @@ async function api(p, opt) {
 }
 
 async function boot(refresh) {
+  $("#bar-title").textContent = isMobile() ? MTITLES[S.tab] : TITLES[S.tab];
   $("#main").innerHTML = '<div class="loading">Running the engine on the Manyavar data…</div>';
   try {
     if (refresh) await api("/api/run", { method: "POST" });
@@ -40,9 +44,9 @@ async function boot(refresh) {
 
 function setTab(t, filter) {
   S.tab = t;
-  $("#bar-title").textContent = TITLES[t] || t;
+  $("#bar-title").textContent = isMobile() ? (MTITLES[t] || TITLES[t]) : (TITLES[t] || t);
   if (filter) { S.f = { ...S.f, q: "", type: "", reason: "", urgency: "", store: "", cat: "", conf: "", appr: false, dec: "", ...filter }; S.page = 0; }
-  document.querySelectorAll(".tabs button").forEach((b) => b.classList.toggle("on", b.dataset.tab === t));
+  document.querySelectorAll("[data-tab]").forEach((b) => b.classList.toggle("on", b.dataset.tab === t));
   render();
   window.scrollTo(0, 0);
 }
@@ -50,7 +54,7 @@ function setTab(t, filter) {
 function render() {
   const m = $("#main");
   if (!S.ov) return;
-  if (S.tab === "overview") { m.innerHTML = vOverview(); bindRows(m); }
+  if (S.tab === "overview") { m.innerHTML = isMobile() ? vToday() : vOverview(); bindRows(m); }
   else if (S.tab === "register") { m.innerHTML = vRegister(); bindRegister(); }
   else if (S.tab === "map") { m.innerHTML = vMapShell(); bindMap(); }
   else if (S.tab === "model") { vModel(); return; }
@@ -123,26 +127,27 @@ function vRegister() {
   const slice = rows.slice(S.page * PAGE, S.page * PAGE + PAGE);
   const approved = S.acts.filter((a) => S.dec[a.id] === "approved").length, rejected = S.acts.filter((a) => S.dec[a.id] === "rejected").length;
   return `
-  <h1>Action register</h1>
-  <p class="lead">Click any row for the evidence and rule checks behind it. Approve / reject is saved in this browser and included in the CSV export of the current view.</p>
-  <div class="filters">
+  ${isMobile() ? "" : `<h1>Action register</h1>
+  <p class="lead">Click any row for the evidence and rule checks behind it. Approve / reject is saved in this browser and included in the CSV export of the current view.</p>`}
+  <div class="filters ${S.fopen ? "open" : ""}">
     <input type="search" id="f-q" placeholder="Search SKU, style, store…" value="${esc(f.q)}" aria-label="Search">
     <select id="f-type" aria-label="Type">${opts([["WH_TO_STORE", "Warehouse → Store"], ["STORE_TO_STORE", "Store → Store"], ["PULL_BACK", "Pull back"]], f.type, "All types")}</select>
-    <select id="f-reason" aria-label="Reason">${opts(reasons, f.reason, "All reasons")}</select>
-    <select id="f-urgency" aria-label="Urgency">${opts(["Critical", "High", "Normal", "Housekeeping"].map((x) => [x, x]), f.urgency, "All urgency")}</select>
-    <select id="f-store" aria-label="Store">${opts(stores, f.store, "All stores")}</select>
-    <select id="f-cat" aria-label="Category">${opts(uniq("category").map((x) => [x, x]), f.cat, "All categories")}</select>
-    <select id="f-conf" aria-label="Confidence">${opts([["high", "High confidence"], ["medium", "Medium"], ["low", "Low"]], f.conf, "Any confidence")}</select>
-    <select id="f-dec" aria-label="Decision">${opts([["pending", "Pending"], ["approved", "Approved"], ["rejected", "Rejected"]], f.dec, "Any decision")}</select>
-    <select id="f-sort" aria-label="Sort">${[["default", "Sort: priority"], ["value", "Sort: value"], ["qty", "Sort: quantity"], ["cover", "Sort: lowest cover"]].map(([v, t]) => `<option value="${v}" ${f.sort === v ? "selected" : ""}>${t}</option>`).join("")}</select>
-    <label><input type="checkbox" id="f-appr" ${f.appr ? "checked" : ""}> needs approval</label>
-    <button class="btn" id="f-reset">Reset</button>
+    <select class="adv" id="f-reason" aria-label="Reason">${opts(reasons, f.reason, "All reasons")}</select>
+    <select class="adv" id="f-urgency" aria-label="Urgency">${opts(["Critical", "High", "Normal", "Housekeeping"].map((x) => [x, x]), f.urgency, "All urgency")}</select>
+    <select class="adv" id="f-store" aria-label="Store">${opts(stores, f.store, "All stores")}</select>
+    <select class="adv" id="f-cat" aria-label="Category">${opts(uniq("category").map((x) => [x, x]), f.cat, "All categories")}</select>
+    <select class="adv" id="f-conf" aria-label="Confidence">${opts([["high", "High confidence"], ["medium", "Medium"], ["low", "Low"]], f.conf, "Any confidence")}</select>
+    <select class="adv" id="f-dec" aria-label="Decision">${opts([["pending", "Pending"], ["approved", "Approved"], ["rejected", "Rejected"]], f.dec, "Any decision")}</select>
+    <select class="adv" id="f-sort" aria-label="Sort">${[["default", "Sort: priority"], ["value", "Sort: value"], ["qty", "Sort: quantity"], ["cover", "Sort: lowest cover"]].map(([v, t]) => `<option value="${v}" ${f.sort === v ? "selected" : ""}>${t}</option>`).join("")}</select>
+    <label class="adv"><input type="checkbox" id="f-appr" ${f.appr ? "checked" : ""}> needs approval</label>
+    <button class="btn adv" id="f-reset">Reset</button>
+    <button class="btn mobile-only" id="f-toggle">${ico("sliders-horizontal")}${S.fopen ? "Hide filters" : "More filters"}</button>
     <button class="btn primary" id="f-export">Export view (${num(rows.length)})</button>
   </div>
   <div class="muted" style="font-size:.86rem">${num(rows.length)} of ${num(S.acts.length)} moves · ${approved} approved · ${rejected} rejected</div>
-  <div class="tw"><table><thead><tr><th>Urgency</th><th>Move</th><th>Item</th><th>Route</th><th>Qty</th><th>Arrives</th><th>Cover</th><th>Value</th><th>Why (one line)</th><th>Decision</th></tr></thead><tbody>
+  ${isMobile() ? (slice.map((a) => cardHtml(a, false)).join("") || `<div class="empty">No moves match these filters.</div>`) : `<div class="tw"><table><thead><tr><th>Urgency</th><th>Move</th><th>Item</th><th>Route</th><th>Qty</th><th>Arrives</th><th>Cover</th><th>Value</th><th>Why (one line)</th><th>Decision</th></tr></thead><tbody>
   ${slice.map(rowHtml).join("") || `<tr><td colspan="10" class="empty">No moves match these filters.</td></tr>`}
-  </tbody></table></div>
+  </tbody></table></div>`}
   <div class="pager"><button class="btn" id="pg-prev" ${S.page === 0 ? "disabled" : ""}>← Prev</button> Page ${S.page + 1} / ${pages} <button class="btn" id="pg-next" ${S.page >= pages - 1 ? "disabled" : ""}>Next →</button></div>`;
 }
 
@@ -167,6 +172,7 @@ function bindRegister() {
   set("#f-q", "q", "input"); set("#f-type", "type"); set("#f-reason", "reason"); set("#f-urgency", "urgency"); set("#f-store", "store"); set("#f-cat", "cat"); set("#f-conf", "conf"); set("#f-dec", "dec"); set("#f-sort", "sort"); set("#f-appr", "appr");
   $("#f-reset").onclick = () => { S.f = { q: "", type: "", reason: "", urgency: "", store: "", cat: "", conf: "", appr: false, dec: "", sort: "default" }; S.page = 0; render(); };
   $("#f-export").onclick = exportView;
+  $("#f-toggle").onclick = () => { S.fopen = !S.fopen; render(); };
   $("#pg-prev").onclick = () => { S.page--; render(); window.scrollTo(0, 0); };
   $("#pg-next").onclick = () => { S.page++; render(); window.scrollTo(0, 0); };
   bindRows($("#main"));
@@ -282,7 +288,10 @@ async function vMethod() {
   <h2>Run manifest</h2><p><a class="btn" href="/api/manifest" target="_blank" rel="noopener">Open run_manifest.json</a> <span class="muted">source hash ${esc(m.source_hash)} · run at ${esc(m.run_at)}</span></p>`;
 }
 
-document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => setTab(b.dataset.tab)));
+document.querySelectorAll("[data-tab]").forEach((b) => b.addEventListener("click", () => setTab(b.dataset.tab)));
+document.querySelector("[data-more]").addEventListener("click", openMore);
+MQ.addEventListener("change", () => { if (S.ov) { $("#bar-title").textContent = isMobile() ? (MTITLES[S.tab] || TITLES[S.tab]) : TITLES[S.tab]; render(); } });
+$("#main").addEventListener("click", onMainClick);
 $("#btn-run").addEventListener("click", async (e) => { e.target.disabled = true; e.target.textContent = "Running…"; await boot(true); e.target.disabled = false; e.target.textContent = "Re-run engine"; });
 $("#scrim").addEventListener("click", closeDrawer);
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDrawer(); });
@@ -374,4 +383,64 @@ async function vModel() {
   ${st ? `<h2>Festival stress test</h2><div class="card">${esc(st.note)}. Origin ${esc(st.origin_week_end)}: NODAL bias ${st.ml.active_pairs.bias.toFixed(2)}, trailing-rate bias ${st.current_trailing_rate.active_pairs.bias.toFixed(2)} (1.00 = unbiased). The model has seen only one Diwali with training signal, so festival-window accuracy is the least validated part of the forecast.</div>` : ""}
   <h2>Probability calibration</h2><p class="lead">When the model says "${"x"}% chance this pair sells at least one unit in 4 weeks", how often does it? ECE ${r.reliability ? r.reliability.ece.toFixed(3) : "n/a"}, Brier ${r.reliability ? r.reliability.brier.toFixed(3) : "n/a"}.</p><div class="card">${rel}</div>
   <h2>What drives the forecast (permutation importance)</h2><div class="card">${imp}</div>`;
+}
+
+/* ------------------------------------------------------------ mobile: cards, review, more sheet */
+S.skip = new Set();
+const VERB = { WH_TO_STORE: "Send", STORE_TO_STORE: "Move", PULL_BACK: "Pull back" };
+function decide(id, d) { if (S.dec[id] === d) delete S.dec[id]; else S.dec[id] = d; saveDec(); }
+function cardHtml(a, review) {
+  const d = S.dec[a.id];
+  const cover = a.type === "PULL_BACK" ? "—" : cov(a.cover_before_days) + " → " + cov(a.cover_after_days);
+  const approve = a.requires_approval ? "Sign off" : "Approve";
+  return `<article class="mcard" data-id="${a.id}" ${review ? "" : 'tabindex="0" role="button"'}>
+    <div class="mc-top"><span class="pill ${a.urgency}">${a.urgency}</span><span class="muted">${esc(a.type_label)} · ${esc(a.reason_label)}</span></div>
+    <h3 class="mc-title">${VERB[a.type]} ${a.qty} × ${esc(a.sku_id)}</h3>
+    <div class="muted">${esc(a.style_name)} · size ${esc(a.size)}</div>
+    <div class="mc-route">${esc(a.source)} → ${esc(a.destination)} <span>arrives ${esc(a.arrival_date.slice(5))}</span></div>
+    <div class="mc-facts"><div><b>${cover}</b><span>Cover</span></div><div><b>${inr(a.value_mrp)}</b><span>Value</span></div><div><b>${esc(a.confidence)}</b><span>Confidence</span></div></div>
+    <p class="mc-why">${esc(a.explanation)}</p>
+    <div class="mc-actions">
+      <button data-act="rejected" class="${d === "rejected" ? "on-r" : ""}">${ico("x")}Reject</button>
+      ${review ? `<button data-act="skip">Skip</button>` : ""}
+      <button data-act="approved" class="${d === "approved" ? "on-a" : "go"}">${ico("check")}${approve}</button>
+    </div>
+    ${review ? `<button class="mc-link" data-act="details">See why and the rules checked</button>` : ""}</article>`;
+}
+function vToday() {
+  const { summary: s, manifest: mf, validation: v } = S.ov;
+  const total = S.acts.length, done = S.acts.filter((a) => S.dec[a.id]).length;
+  const next = S.acts.find((a) => !S.dec[a.id] && !S.skip.has(a.id));
+  const passN = v.rules.filter((r) => r.passed).length;
+  const review = next ? `<div class="stepper"><span>${num(done)} of ${num(total)} reviewed</span><span>${num(total - done)} left</span></div><div class="progress"><i style="width:${(done / Math.max(total, 1)) * 100}%"></i></div>${cardHtml(next, true)}`
+    : `<div class="card"><b>${total - done > 0 ? "You skipped the rest for now." : "All caught up."}</b><p class="muted" style="margin:6px 0 0">${total - done > 0 ? "Skipped moves are still waiting in Moves." : "Every move has a decision. Export the list from More."}</p></div>`;
+  const hl = (s.highlights || []).slice(0, 4).map((h) => `<div class="card hl ${h.tone}" tabindex="0" role="button" data-go="${h.tab}" ${h.filter ? `data-f='${esc(JSON.stringify(h.filter))}'` : ""}>${ico("alert-triangle")}<div><b>${esc(h.title)}</b><p>${esc(h.text)}</p></div></div>`).join("");
+  return `<p class="lead" style="margin-bottom:12px">${num(total)} moves for ${esc(mf.dispatch_date)}. Review the next one below.</p>${review}
+  <h2>At a glance</h2><div class="grid kpis">
+   <div class="card kpi"><div class="v">${num(s.total.units)}</div><div class="l">Units to move</div></div>
+   <div class="card kpi"><div class="v">${num(s.needs_approval)}</div><div class="l">Need sign-off</div></div>
+   <div class="card kpi"><div class="v">${passN}/${v.rules.length}</div><div class="l">Rules pass</div></div>
+   <div class="card kpi"><div class="v">${lakh(s.total.value_mrp)}</div><div class="l">At MRP</div></div></div>
+  <h2>What NODAL found</h2><div class="grid">${hl}</div>`;
+}
+function onMainClick(e) {
+  const btn = e.target.closest("button[data-act]");
+  const card = e.target.closest(".mcard");
+  if (btn && card) {
+    const id = card.dataset.id, act = btn.dataset.act;
+    if (act === "details") return openDrawer(id);
+    if (act === "skip") S.skip.add(id); else decide(id, act);
+    return render();
+  }
+  if (card && !btn) openDrawer(card.dataset.id);
+}
+function openMore() {
+  const d = $("#drawer");
+  const row = (icon, label, attr) => `<button class="sheet-row" ${attr}>${ico(icon)}<span>${label}</span></button>`;
+  d.innerHTML = `<button class="btn x" id="dx">${ico("x")}Close</button><h1 style="margin-top:0">More</h1>
+    ${row("database", "Data quality", 'data-m="quality"')}${row("line-chart", "Forecast model", 'data-m="model"')}${row("info", "How it works", 'data-m="method"')}
+    <a class="sheet-row" href="/api/export.csv">${ico("download")}<span>Export all moves (CSV)</span></a>${row("refresh-cw", "Re-run engine", 'data-m="rerun"')}`;
+  d.classList.add("open"); $("#scrim").classList.add("open"); d.setAttribute("aria-hidden", "false");
+  $("#dx").onclick = closeDrawer;
+  d.querySelectorAll("[data-m]").forEach((b) => b.addEventListener("click", async () => { closeDrawer(); if (b.dataset.m === "rerun") await boot(true); else setTab(b.dataset.m); }));
 }
