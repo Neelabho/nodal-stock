@@ -86,7 +86,10 @@ SCHEMA = {"type": "object", "properties": {"summary": {"type": "string", "maxLen
 
 def _grounded(text: str, facts: dict) -> bool:
     from .ai.review import allowed_numbers, _NUM, _ID
+    import re
     ok = allowed_numbers(facts)
+    for iso in re.findall(r"\d{4}-(\d{2})-(\d{2})", json.dumps(facts, default=str)):      # "8 Nov" is grounded by a 2026-11-08 date in the facts
+        ok.add(float(int(iso[1]))); ok.add(float(int(iso[0])))
     for m in _NUM.findall(_ID.sub(" ", text)):
         try:
             v = round(float(m.replace(",", "")), 2)

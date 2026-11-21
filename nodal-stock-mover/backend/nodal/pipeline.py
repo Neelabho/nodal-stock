@@ -147,7 +147,17 @@ def daily(force=False, with_ai=True, kind="daily", dataset: Path | None = None, 
         reviews = db.reviews_of(run_id)
         for a in res["actions"]:
             reviews.setdefault(a["id"], None)
-        bundle = st.run("publish", lambda: publish(run_id, res, reviews, cand, ih, src_label, st.s))
+        def _ships():
+            from . import shipments as shp
+            rv = {k: {"outcome": v.get("outcome")} for k, v in reviews.items() if v}
+            sh = shp.build(res["actions"], res["stores"], res["manifest"]["seasonality"], rv, d.warehouse_id)
+            client = None
+            if with_ai:
+                from .ai.ollama import OllamaClient
+                client = OllamaClient()
+            return sh, shp.summarise(sh, client)
+        ships, ship_stats = st.run("simple_summaries", _ships, retries=0)
+        bundle = st.run("publish", lambda: publish(run_id, res, reviews, cand, ih, src_label, st.s, ships))
         n_val = sum(1 for r in res["validation"]["rules"] if not r["passed"])
         status = "completed" if ai_summary.get("ai_status") in ("completed", "skipped") else "partial"
         metrics = {"moves": len(res["actions"]), "units": res["summary"]["total"]["units"], "value_mrp": res["summary"]["total"]["value_mrp"], "needs_approval": res["summary"]["needs_approval"],
@@ -164,7 +174,7 @@ def daily(force=False, with_ai=True, kind="daily", dataset: Path | None = None, 
         return {"run_id": run_id, "status": "failed", "error": str(e)[:400]}
 
 
-def publish(run_id, res, reviews, cand, ih, src_label, stages):
+def publish(run_id, res, reviews, cand, ih, src_label, stages, ships=None):
     """Write the immutable run bundle (gzip JSON) that the public viewer serves. Previous bundles are kept."""
     PUBLISHED = published_dir()
     PUBLISHED.mkdir(parents=True, exist_ok=True)
@@ -175,7 +185,7 @@ def publish(run_id, res, reviews, cand, ih, src_label, stages):
             rev[mid] = {k: r[k] for k in ("state", "outcome", "review", "alternative", "error", "model", "updated_at")}
     bundle = {"run_id": run_id, "created_at": db.now(), "input_hash": ih, "source": src_label, "stages": stages,
               **{k: res[k] for k in ("manifest", "audit", "summary", "actions", "validation", "excluded", "blocked_samples", "unresolved", "stores", "positions", "warehouse")},
-              "reviews": rev, "backtest": json.loads(bt.read_text()) if bt.exists() else None}
+              "shipments": ships or [], "reviews": rev, "backtest": json.loads(bt.read_text()) if bt.exists() else None}
     raw = json.dumps(bundle, default=_json_default, separators=(",", ":")).encode()
     for name in (f"run_{run_id}.json.gz", "latest.json.gz"):
         with gzip.open(PUBLISHED / name, "wb", compresslevel=6) as f:

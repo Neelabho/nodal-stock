@@ -13,7 +13,10 @@ from fastapi.responses import FileResponse, JSONResponse, Response, StreamingRes
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import db, pipeline, geo
+from . import db, pipeline, geo, shipments as shp
+from .envfile import load_env
+
+load_env()
 
 log = logging.getLogger("nodal.api")
 ROOT = Path(__file__).resolve().parents[3]
@@ -48,7 +51,13 @@ def _load(refresh=False) -> dict:
                 db.store_moves(run_id, r["actions"])
                 r["reviews"] = {}
                 _state.update(r=r, run_id=run_id, created_at=db.now(), source="computed")
+            if not _state["r"].get("shipments"):                       # older bundles / computed plans: build with template summaries
+                rv = {k: {"outcome": v.get("outcome")} for k, v in (_state["r"].get("reviews") or {}).items() if v}
+                sh = shp.build(_state["r"]["actions"], _state["r"]["stores"], _state["r"]["manifest"]["seasonality"], rv)
+                shp.summarise(sh, None)
+                _state["r"]["shipments"] = sh
             _state["by_id"] = {a["id"]: a for a in _state["r"]["actions"]}
+            _state["ship_by_id"] = {s["id"]: s for s in _state["r"]["shipments"]}
         return _state["r"]
 
 
@@ -174,6 +183,95 @@ def decide(body: DecisionIn, x_client_id: str | None = Header(default=None)):
 def decisions():
     _result()
     return {"run_id": _state["run_id"], "current": db.current_decisions(_state["run_id"])}
+
+
+# ---------------------------------------------------------------- shipments + batch decisions
+def _ship_status(sh: dict, dec: dict) -> dict:
+    ds = [(dec.get(m) or {}).get("decision") for m in sh["move_ids"]]
+    ok = sum(1 for d in ds if d in ("approved", "approved_alternative")); no = sum(1 for d in ds if d == "rejected"); n = len(ds)
+    status = "approved" if ok == n else "rejected" if no == n else "pending" if ok + no == 0 else "mixed"
+    return {"status": status, "approved": ok, "rejected": no}
+
+
+@app.get("/api/shipments")
+def shipments_list():
+    _result()
+    dec = db.current_decisions(_state["run_id"])
+    return [{**{k: v for k, v in s.items() if k != "move_ids"}, **_ship_status(s, dec), "n_moves": len(s["move_ids"])} for s in _state["r"]["shipments"]]
+
+
+@app.get("/api/shipments/{sid}")
+def shipment_detail(sid: str):
+    _result()
+    s = _state["ship_by_id"].get(sid)
+    if not s:
+        raise HTTPException(404, "unknown shipment")
+    dec = db.current_decisions(_state["run_id"])
+    lines = [{**{k: a[k] for k in ("id", "type", "type_label", "reason_label", "urgency", "sku_id", "style_name", "size", "source", "destination", "qty", "arrival_date", "value_mrp", "requires_approval", "explanation")},
+              **_ai_brief(a["id"]), "decision": (dec.get(a["id"]) or {}).get("decision")} for a in (_state["by_id"][m] for m in s["move_ids"])]
+    return {**{k: v for k, v in s.items() if k != "move_ids"}, **_ship_status(s, dec), "moves": lines}
+
+
+class BatchIn(BaseModel):
+    shipment_id: str | None = None
+    move_ids: list[str] | None = None
+    decision: Literal["approved", "rejected", "cleared"]
+    confirm_high_value: bool = False
+    reason: str | None = None
+
+
+def _apply_batch(ids: list[str], decision: str, actor: str, confirm: bool, reason: str | None, label: str):
+    moves = [_state["by_id"][m] for m in ids if m in _state["by_id"]]
+    big = [a for a in moves if a["requires_approval"]]
+    if decision == "approved" and big and not confirm:
+        raise HTTPException(409, {"error": "needs_confirmation", "big_items": len(big), "big_value": sum(a["value_mrp"] for a in big),
+                                  "message": f"{len(big)} item(s) in this selection are above the ₹{shp_threshold():,} sign-off limit (₹{sum(a['value_mrp'] for a in big):,} together). Confirm to approve everything."})
+    written = 0
+    for a in moves:
+        out = db.record_decision(_state["run_id"], a["id"], decision, actor, reason, original={k: a[k] for k in LIGHT}, confirmed=confirm and a["requires_approval"])
+        written += int(out["written"])
+    db.audit("batch_decision", actor, run=_state["run_id"], scope=label, decision=decision, moves=len(moves), written=written)
+    return {"moves": len(moves), "written": written, "note": "This approves the proposed plan only. It does not dispatch any stock."}
+
+
+def shp_threshold() -> int:
+    return int(_state["r"]["manifest"]["policy"]["approval_value_mrp"])
+
+
+@app.post("/api/decisions/batch")
+def decide_batch(body: BatchIn, x_client_id: str | None = Header(default=None)):
+    _result()
+    if body.shipment_id:
+        s = _state["ship_by_id"].get(body.shipment_id)
+        if not s:
+            raise HTTPException(404, "unknown shipment")
+        ids = s["move_ids"]
+    elif body.move_ids:
+        ids = body.move_ids
+    else:
+        raise HTTPException(422, "pass shipment_id or move_ids")
+    return _apply_batch(ids, body.decision, _actor(x_client_id), body.confirm_high_value, body.reason, body.shipment_id or "moves")
+
+
+class RoutineIn(BaseModel):
+    confirm_high_value: bool = False
+
+
+@app.post("/api/decisions/routine")
+def decide_routine(body: RoutineIn, x_client_id: str | None = Header(default=None)):
+    """Approve every pending shipment marked routine (no AI flags, no low-confidence items, not critical)."""
+    _result()
+    dec = db.current_decisions(_state["run_id"])
+    ids = [m for s in _state["r"]["shipments"] if s["routine"] and _ship_status(s, dec)["status"] == "pending" for m in s["move_ids"]]
+    if not ids:
+        return {"moves": 0, "written": 0, "note": "No pending routine shipments."}
+    return _apply_batch(ids, "approved", _actor(x_client_id), body.confirm_high_value, "approved as routine", "routine")
+
+
+@app.get("/api/capabilities")
+def capabilities():
+    local = MODE != "published"
+    return {"mode": MODE, "can_upload": local, "can_compute": local, "can_ask": bool(os.environ.get("SARVAM_API_KEY")) or local, "public": not local}
 
 
 @app.get("/api/ai")
