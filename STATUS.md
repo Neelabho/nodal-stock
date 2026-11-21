@@ -2,32 +2,31 @@
 
 **Brief:** Manyavar Stock Mover (Case study B). **Repo:** https://github.com/Neelabho/nodal-stock
 
-## Sign-off checklist (agreed with the builder)
-| Criterion | State |
+## v2 (this release): what is verified
+| Area | Evidence |
 |---|---|
-| Rules pass + tests green | **Done.** Validator 11/11 on the live run, 0 moves excluded. `pytest`: 21 passed (≈80 s). Mobile UI (375 px) checked in the browser pane: no horizontal scroll, 44 px touch targets, one-move review flow works; not tried on a physical iPhone. |
-| Planted problems visibly handled | **Done in data, check in UI.** KNP-03 520/250 pulled back to 250; BLR-05 and MZF-01 display breaches filled first; MYS-02 negative stock excluded; protected styles refused. Each has a card on Overview that opens the matching moves. |
-| Public URL works | **Not done.** Runs locally only (`./nodal-stock-mover/run.sh`). Needs a Python host. |
-| Two-minute demo recorded | **Not done.** |
+| Qwen3 8B review (local Ollama) | Real daily run on the supplied data: 60 highest-priority moves reviewed by `qwen3:8b` (≈2 s each), 43 agree / 17 flagged, 0 failed. The grounding guard rejected several first answers (invented numbers, unreferenced evidence) and the retry produced valid ones. |
+| AI safety guards | 14 tests: malformed JSON, timeouts, retries, Ollama down (review stays `pending`, plan unaffected), invented quantities rejected, invalid evidence refs rejected, invented/unsupported alternatives downgraded to FLAG, cache reuse. |
+| Alternatives | Deterministic candidates from NODAL's own ledger, each re-validated by the independent validator (tests re-check every candidate and a forged one is blocked). On the real plan 83 moves had candidates, only 2 were better by calculation (+₹1,641 and +₹62) and **Qwen3 selected none**, so the published plan contains **no AI alternative**. |
+| Persistence + audit | SQLite and **PostgreSQL 17**: migrations apply, append-only decisions, idempotent approvals, 8 concurrent identical approvals write exactly 1 row, audit events, run history. |
+| Daily pipeline | Run end to end on the real data (≈2.5 min with 60 AI reviews): input hash, immutable snapshot, stage records, bundle publish, notification file. Tests: duplicate dataset skipped, missing files stop the run with a reason, interrupted run closed, watched-folder detection, timezone scheduling. |
+| Public app | Run in a clean virtualenv with **only** the public requirements (no pandas/numpy/scikit-learn/scipy) against PostgreSQL 17: `/healthz`, status, a persisted approval, map and UI all responded. |
+| Phone UI | Checked at 375 px in the browser pane: no horizontal overflow, 0 touch targets under 44 px, one-move review, approve persists server-side, detail sheet with AI section, original-vs-alternative comparison renders (verified with a clearly-labelled, unpublished synthetic alternative) and "Approve AI alternative" is recorded. |
+| Tests | 54 passed (≈100 s): existing 21 engine/forecast/map tests + 33 new (AI, persistence/API, pipeline, PWA/mobile static). |
 
-## Verified (this session, locally)
-- End-to-end run ≈ 35 s (ML training + LP + greedy comparison): ~600 moves, ~2,850 units, ₹2.3 crore at MRP; 24 need human approval (> ₹1,00,000).
-- UI checked in the browser pane: Overview with approval queue (approve works, queue refills), Action register, Hotspot map (markers, ranking, move lines), Rules & gaps, Data quality, Forecast model, Method. No console errors. Phone width (375 px): no horizontal scroll.
-- Design: flat palette (solid colours, 1 px borders, no gradients or shadows), Rufina + Figtree, Lucide line icons (ISC, pinned 0.469.0). Palette is inspired by Manyavar's public site colours (maroon / cream / sand); no logos or assets copied.
+## Not done / not verified (be honest)
+- **No public URL yet.** Render needs your account; `render.yaml`, `Dockerfile`, `/healthz`, `.env.example` and `docs/DEPLOYMENT.md` are ready. Docker Desktop is paused here, so the **image was not built**; the public dependency set was validated in a venv instead.
+- **QR code not generated** (needs the final HTTPS URL): `python scripts/make_qr.py https://<url>`.
+- **PWA install not verified.** Manifest, icons, service worker and iOS tags exist and have static tests, but the embedded browser refuses service-worker registration, so install / offline behaviour is untested. Verify on the iPhone over HTTPS after deploy.
+- **No real iPhone test.** Phone checks used a 375 px viewport in the browser pane.
+- **No user accounts or roles** (your decision: judges use the app without logging in). Decisions carry an anonymous per-browser id. Operator endpoints need `NODAL_ADMIN_TOKEN`.
+- Dashboard upload is per-file (`PUT /api/admin/inbox/<table>.csv`), API-only; there is no upload screen. SFTP, cloud-storage and inventory-system connectors are not built (no Manyavar API is assumed).
+- Outcomes table exists but nothing fills it yet (needs actual-movement and later-sales feeds); no model is retrained from decisions.
+- The 8B model's reasoning is imperfect (it once applied the donor cover rule to a receiving store). It is advisory, guarded, and never changes a quantity or rule.
+- Local dev database `data/nodal.db` contains my test approvals; delete the file to reset.
 
-## Forecast model — measured, not claimed (docs/FORECAST_BACKTEST.json)
-Pure ML (Poisson gradient boosting); tuned on validation origins only; no store/SKU IDs as inputs.
-- Beats the old trailing-rate method on Poisson deviance at every test origin, and on WAPE at 3 of 4.
-- Bias 1.05 to 1.19 (target ±10%: **fails** at the Sep origin). Store×category WAPE 0.16, 0.17, 0.25, 0.29 (target ≤ 25% at 3 of 4: **fails** narrowly). Probability calibration ECE 0.02 (**passes**).
-- Unseen styles: better than the peer baseline. Unseen stores: roughly equal (worse at one origin, better at the other) — **fails** the "not worse" check.
-- Per store×SKU weekly WAPE ≈ 0.55–0.62 is the Poisson noise floor; "90% accuracy" is not attainable at that level and is not claimed.
-- Festival-window accuracy rests on one Diwali with training signal (stress test under-forecasts): least validated part.
-
-## Not working / unverified
-- No public deployment; no demo video. Map tiles need internet. Store map positions are approximate city centres.
-- LP optimiser adds ≈ 0.2–0.9% expected revenue over greedy: real but small.
-- ~330 store×SKU positions (~1,500 units) remain unmet after warehouse and donor supply; listed in Rules & gaps.
-- "Pull back" destination (WH-KOL) is an assumption; scheduled dispatches depend on inbound marked "Planned".
+## Unchanged from v1
+Forecast trust scorecard (4 of 7 pre-declared checks pass; see `docs/FORECAST_BACKTEST.json`), pull-back destination assumption, thresholds 14/30/180 days, Planned-inbound reliability assumption.
 
 ## Next single action
-Decide deployment host, then record the demo.
+Deploy the Blueprint on Render, open `/healthz` on the public URL, generate the QR code, and test Add-to-Home-Screen on the iPhone.

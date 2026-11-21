@@ -9,7 +9,7 @@ No LLM is involved in any quantity.
 
 ## Run it
 
-Requires Python 3.11+. The supplied Manyavar data pack is included unmodified under `manyavar-vch3-data/`
+Requires Python 3.11+ (3.12 in the public image). The supplied Manyavar data pack is included unmodified under `manyavar-vch3-data/`
 (the app reads `manyavar-vch3-data/csv/`; override with `NODAL_DATA_DIR`). Data and briefs belong to Vedant Fashions Limited.
 
 ```bash
@@ -19,6 +19,14 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m pytest -q # tests on the real data
 cd backend && ../.venv/bin/python -m nodal.cli   # headless: writes data/actions.csv + run manifest
 ```
+
+## v2: AI review, daily automation, public phone app
+
+- **Qwen3 8B (local Ollama)** reviews the highest-priority moves and compares validated alternatives. It is advisory: its numbers and evidence are machine-checked and nothing it says changes a quantity or rule.
+- **Daily pipeline** (`python -m nodal.cli daily | schedule | watch`): ingest, hash, snapshot, forecast, allocate, validate, review, publish.
+- **Server-side approvals** with an append-only audit trail (SQLite locally, PostgreSQL in production).
+- **Installable phone app** (PWA) that judges open from a QR code, no sign-in. Approving a plan never dispatches stock.
+- Architecture, operations and deployment: `nodal-stock-mover/docs/DEPLOYMENT.md`. Honest status: `STATUS.md`.
 
 ## What to look at
 
