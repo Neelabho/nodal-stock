@@ -13,32 +13,38 @@ const isMobile = () => MQ.matches;
 const ico = (n) => `<i data-lucide="${n}"></i>`;
 let _iconQueued = false;
 new MutationObserver(() => { if (_iconQueued || !window.lucide) return; _iconQueued = true; requestAnimationFrame(() => { _iconQueued = false; window.lucide.createIcons(); }); }).observe(document.body, { childList: true, subtree: true });
-const MTITLES = { overview: "Today", register: "Moves", safety: "Checks", map: "Map", quality: "Data quality", model: "Forecast", method: "Method" };
-const TITLES = { overview: "Overview", register: "Action register", map: "Hotspot map", safety: "Rules & gaps", quality: "Data quality", model: "Forecast model", method: "Method" };
+const MTITLES = { overview: "Today", register: "Moves", ai: "AI review", runs: "Daily runs", history: "History", safety: "Checks", map: "Map", quality: "Data quality", model: "Forecast", method: "Method" };
+const TITLES = { overview: "Overview", register: "Action register", ai: "AI Intelligence", runs: "Daily runs", history: "History", map: "Hotspot map", safety: "Rules & gaps", quality: "Data quality", model: "Forecast model", method: "Method" };
 
-function decKey() { return "nodal-decisions-" + (S.ov ? S.ov.manifest.source_hash : "x"); }
-function loadDec() { try { S.dec = JSON.parse(localStorage.getItem(decKey()) || "{}"); } catch { S.dec = {}; } }
-function saveDec() { try { localStorage.setItem(decKey(), JSON.stringify(S.dec)); } catch { /* storage unavailable: decisions last for this session only */ } }
-
+S.decFull = {};
+function clientId() { try { let c = localStorage.getItem("nodal-client-id"); if (!c) { c = Math.random().toString(36).slice(2, 10); localStorage.setItem("nodal-client-id", c); } return c; } catch { return "anon"; } }
+async function loadDec() {
+  const d = await api("/api/decisions");
+  S.dec = {}; S.decFull = {};
+  Object.entries(d.current).forEach(([id, v]) => { S.decFull[id] = v.decision; S.dec[id] = v.decision === "rejected" ? "rejected" : "approved"; });
+}
+async function refreshStatus() { try { S.status = await api("/api/status"); } catch { /* keep last */ } }
+function saveDec() {}
 async function api(p, opt) {
   const r = await fetch(p, opt);
+  if (r.headers.get("x-nodal-cache")) S.stale = true; else if (r.ok && (!opt || !opt.method || opt.method === "GET")) S.stale = false;
   if (!r.ok) { let m = r.statusText; try { m = (await r.json()).detail || m; } catch { /* */ } throw new Error(m); }
   return r.json();
 }
 
 async function boot(refresh) {
   $("#bar-title").textContent = isMobile() ? MTITLES[S.tab] : TITLES[S.tab];
-  $("#main").innerHTML = '<div class="loading">Running the engine on the Manyavar data…</div>';
+  $("#main").innerHTML = '<div class="loading">Loading today\'s plan…</div>';
   try {
     if (refresh) await api("/api/run", { method: "POST" });
     S.ov = await api("/api/overview");
     S.acts = await api("/api/actions");
     S.quality = null; S.safety = null;
-    loadDec();
+    await loadDec(); await refreshStatus();
     $("#asof").textContent = `Stock as of ${S.ov.manifest.as_of} · plan dispatches ${S.ov.manifest.dispatch_date}`;
-    render();
+    netBanner(); render();
   } catch (e) {
-    $("#main").innerHTML = `<div class="note"><b>Could not run the engine.</b><br>${esc(e.message)}<br><span class="muted">Check that the organiser CSVs are at manyavar-vch3-data/csv/ or set NODAL_DATA_DIR.</span></div>`;
+    $("#main").innerHTML = `<div class="note"><b>Could not load the plan.</b><br>${esc(e.message)}<br><span class="muted">If you are offline, reconnect and try again. Operators: run <code>python -m nodal.cli daily</code> to publish a plan.</span></div>`;
   }
 }
 
@@ -58,6 +64,9 @@ function render() {
   else if (S.tab === "register") { m.innerHTML = vRegister(); bindRegister(); }
   else if (S.tab === "map") { m.innerHTML = vMapShell(); bindMap(); }
   else if (S.tab === "model") { vModel(); return; }
+  else if (S.tab === "ai") { vAI(); return; }
+  else if (S.tab === "runs") { vRuns(); return; }
+  else if (S.tab === "history") { vHistory(); return; }
   else if (S.tab === "quality") vQuality();
   else if (S.tab === "safety") vSafety();
   else { vMethod(); return; }
@@ -72,7 +81,7 @@ function vOverview() {
   const reasonNames = { under_stocked: "Under-stocked → warehouse", scheduled_inbound: "Scheduled inbound dispatch", display_minimum: "Minimum display fill", ageing_relocation: "Ageing → where it sells", surplus_rebalance: "Surplus store → store", over_capacity: "Over-capacity relief", ageing_pullback: "Ageing pull-back" };
   const bars = Object.entries(s.by_reason).filter(([, x]) => x.actions).map(([k, x]) => `<div class="bar-row"><span class="n">${reasonNames[k] || k}</span><span class="t"><i style="width:${(x.units / maxU) * 100}%"></i></span><span class="c">${num(x.actions)} moves · ${num(x.units)} units</span></div>`).join("");
   const hl = (s.highlights || []).map((h) => `<div class="card hl ${h.tone}" tabindex="0" role="button" data-go="${h.tab}" ${h.filter ? `data-f='${esc(JSON.stringify(h.filter))}'` : ""}>${ico(h.tone === "bad" ? "alert-triangle" : h.tone === "warn" ? "alert-triangle" : "info")}<div><b>${esc(h.title)}</b><p>${esc(h.text)}</p></div></div>`).join("");
-  return `
+  return `${statusHtml()}
   <h1>${num(s.total.actions)} moves proposed for ${esc(mf.dispatch_date)}</h1>
   <p class="lead">Built from ${num(mf.velocity.positions)} store × SKU positions across 20 stores and the Kolkata warehouse. Every quantity comes from sales, stock and rule data; nothing is dispatched until a merchandiser approves it.</p>
   <div class="grid kpis">
@@ -163,7 +172,7 @@ function rowHtml(a) {
     <td class="num">${a.arrival_date.slice(5)}</td>
     <td class="num">${a.type === "PULL_BACK" ? "—" : cov(a.cover_before_days) + " → " + cov(a.cover_after_days)}</td>
     <td class="num">${inr(a.value_mrp)}${a.requires_approval ? '<span class="sub"><span class="pill flag">approval</span></span>' : ""}</td>
-    <td class="why">${esc(a.explanation)}<div>${fl}</div></td>
+    <td class="why">${esc(a.explanation)}<div>${aiChip(a)} ${fl}</div></td>
     <td class="dec"><button data-d="approved" class="${d === "approved" ? "on-a" : ""}">${ico("check")}${a.requires_approval ? "Sign off" : "Approve"}</button><button data-d="rejected" class="${d === "rejected" ? "on-r" : ""}">${ico("x")}Reject</button></td></tr>`;
 }
 
@@ -181,7 +190,7 @@ function bindRows(root) {
   root.querySelectorAll("tbody tr[data-id]").forEach((tr) => {
     tr.addEventListener("click", (e) => {
       const b = e.target.closest("button[data-d]");
-      if (b) { const id = tr.dataset.id; S.dec[id] = S.dec[id] === b.dataset.d ? undefined : b.dataset.d; if (!S.dec[id]) delete S.dec[id]; saveDec(); render(); return; }
+      if (b) { setDecision(tr.dataset.id, b.dataset.d); return; }
       openDrawer(tr.dataset.id);
     });
     tr.addEventListener("keydown", (e) => { if (e.key === "Enter") openDrawer(tr.dataset.id); });
@@ -217,6 +226,7 @@ async function openDrawer(id) {
   <span class="pill ${a.urgency}">${a.urgency}</span> <span class="pill type">${esc(a.type_label)} · ${esc(a.reason_label)}</span>
   <h1 style="margin-top:.5rem">${a.qty} × ${esc(a.sku_id)}</h1><div class="muted">${esc(a.style_name)} · ${esc(a.category)} · size ${esc(a.size)}</div>
   <div class="say">${esc(a.explanation)}</div>
+  ${decisionBar(a)}
   ${kv([["Route", `${esc(a.source)} → ${esc(a.destination)}`], ["Dispatch → arrival", `${a.dispatch_date} → ${a.arrival_date} (${a.lead_days} days)`], ["Value at MRP", inr(a.value_mrp) + ` (${inr(a.unit_mrp)} each)`],
       ["Status", a.requires_approval ? "Needs human approval (> " + inr(S.ov.manifest.policy.approval_value_mrp) + ")" : "Proposed"], ["Supply basis", a.supply_basis === "on_hand" ? "stock on hand" : "planned inbound (status Planned)"], ["Confidence", esc(a.confidence)]])}
   ${rc && a.type !== "PULL_BACK" ? `<h3>Destination: cover</h3>` + kv([["Cover at arrival (before)", cov(rc.cover_before_days)], ["Cover after move", cov(rc.cover_after_days)], ["Projected stock at arrival", rc.projected_stock_at_arrival], ["Units needed to reach target", rc.need_units], ["Capacity room before", rc.capacity_room_before !== undefined ? `${rc.capacity_room_before} of ${rc.capacity}` : undefined]]) + posBlock("Destination: demand evidence", rc) : ""}
@@ -227,8 +237,10 @@ async function openDrawer(id) {
   <h3>Rules checked for this move</h3><ul class="checks">${(e.checks || []).map((c) => `<li>${esc(c)}</li>`).join("")}<li>passed the independent post-plan validator</li></ul>
   ${e.assumption ? `<div class="note">Assumption: ${esc(e.assumption)}</div>` : ""}
   ${a.flags.length ? `<div>${a.flags.map((x) => `<span class="pill flag">${esc(x.replace(/_/g, " "))}</span>`).join(" ")}</div>` : ""}
+  ${aiSection(a.review)}${altCompare(a, a.review)}
   <details style="margin-top:14px"><summary>Raw evidence (JSON)</summary><pre>${esc(JSON.stringify(e, null, 1))}</pre></details>`;
   $("#dx").onclick = closeDrawer;
+  bindDecisionBar(d, a);
 }
 function closeDrawer() { $("#drawer").classList.remove("open"); $("#scrim").classList.remove("open"); $("#drawer").setAttribute("aria-hidden", "true"); }
 
@@ -292,7 +304,6 @@ document.querySelectorAll("[data-tab]").forEach((b) => b.addEventListener("click
 document.querySelector("[data-more]").addEventListener("click", openMore);
 MQ.addEventListener("change", () => { if (S.ov) { $("#bar-title").textContent = isMobile() ? (MTITLES[S.tab] || TITLES[S.tab]) : TITLES[S.tab]; render(); } });
 $("#main").addEventListener("click", onMainClick);
-$("#btn-run").addEventListener("click", async (e) => { e.target.disabled = true; e.target.textContent = "Running…"; await boot(true); e.target.disabled = false; e.target.textContent = "Re-run engine"; });
 $("#scrim").addEventListener("click", closeDrawer);
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDrawer(); });
 boot(false);
@@ -388,18 +399,20 @@ async function vModel() {
 /* ------------------------------------------------------------ mobile: cards, review, more sheet */
 S.skip = new Set();
 const VERB = { WH_TO_STORE: "Send", STORE_TO_STORE: "Move", PULL_BACK: "Pull back" };
-function decide(id, d) { if (S.dec[id] === d) delete S.dec[id]; else S.dec[id] = d; saveDec(); }
+function decide(id, d) { return setDecision(id, d); }
 function cardHtml(a, review) {
   const d = S.dec[a.id];
   const cover = a.type === "PULL_BACK" ? "—" : cov(a.cover_before_days) + " → " + cov(a.cover_after_days);
   const approve = a.requires_approval ? "Sign off" : "Approve";
   return `<article class="mcard" data-id="${a.id}" ${review ? "" : 'tabindex="0" role="button"'}>
     <div class="mc-top"><span class="pill ${a.urgency}">${a.urgency}</span><span class="muted">${esc(a.type_label)} · ${esc(a.reason_label)}</span></div>
+    <div style="margin-top:6px">${aiChip(a)} <span class="pill ok">Rules passed</span></div>
     <h3 class="mc-title">${VERB[a.type]} ${a.qty} × ${esc(a.sku_id)}</h3>
     <div class="muted">${esc(a.style_name)} · size ${esc(a.size)}</div>
     <div class="mc-route">${esc(a.source)} → ${esc(a.destination)} <span>arrives ${esc(a.arrival_date.slice(5))}</span></div>
     <div class="mc-facts"><div><b>${cover}</b><span>Cover</span></div><div><b>${inr(a.value_mrp)}</b><span>Value</span></div><div><b>${esc(a.confidence)}</b><span>Confidence</span></div></div>
     <p class="mc-why">${esc(a.explanation)}</p>
+    ${a.has_alt ? `<button class="alt-banner" data-act="details">${ico("sparkles")}<span>AI found a validated alternative. Compare</span>${ico("chevron-right")}</button>` : ""}
     <div class="mc-actions">
       <button data-act="rejected" class="${d === "rejected" ? "on-r" : ""}">${ico("x")}Reject</button>
       ${review ? `<button data-act="skip">Skip</button>` : ""}
@@ -415,7 +428,7 @@ function vToday() {
   const review = next ? `<div class="stepper"><span>${num(done)} of ${num(total)} reviewed</span><span>${num(total - done)} left</span></div><div class="progress"><i style="width:${(done / Math.max(total, 1)) * 100}%"></i></div>${cardHtml(next, true)}`
     : `<div class="card"><b>${total - done > 0 ? "You skipped the rest for now." : "All caught up."}</b><p class="muted" style="margin:6px 0 0">${total - done > 0 ? "Skipped moves are still waiting in Moves." : "Every move has a decision. Export the list from More."}</p></div>`;
   const hl = (s.highlights || []).slice(0, 4).map((h) => `<div class="card hl ${h.tone}" tabindex="0" role="button" data-go="${h.tab}" ${h.filter ? `data-f='${esc(JSON.stringify(h.filter))}'` : ""}>${ico("alert-triangle")}<div><b>${esc(h.title)}</b><p>${esc(h.text)}</p></div></div>`).join("");
-  return `<p class="lead" style="margin-bottom:12px">${num(total)} moves for ${esc(mf.dispatch_date)}. Review the next one below.</p>${review}
+  return `${statusHtml(true)}<p class="lead" style="margin-bottom:12px">${num(total)} moves for ${esc(mf.dispatch_date)}. Review the next one below.</p>${review}
   <h2>At a glance</h2><div class="grid kpis">
    <div class="card kpi"><div class="v">${num(s.total.units)}</div><div class="l">Units to move</div></div>
    <div class="card kpi"><div class="v">${num(s.needs_approval)}</div><div class="l">Need sign-off</div></div>
@@ -429,18 +442,161 @@ function onMainClick(e) {
   if (btn && card) {
     const id = card.dataset.id, act = btn.dataset.act;
     if (act === "details") return openDrawer(id);
-    if (act === "skip") S.skip.add(id); else decide(id, act);
-    return render();
+    if (act === "skip") { S.skip.add(id); return render(); }
+    return setDecision(id, act);
   }
   if (card && !btn) openDrawer(card.dataset.id);
 }
+
+/* ------------------------------------------------------------ decisions (server-side, audited) */
+function toast(msg) {
+  let t = $("#toast"); if (!t) { t = document.createElement("div"); t.id = "toast"; t.setAttribute("role", "status"); document.body.appendChild(t); }
+  t.textContent = msg; t.classList.add("on"); clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove("on"), 4200);
+}
+async function setDecision(id, decision, opts = {}) {
+  if (!navigator.onLine) return toast("You are offline. Approvals need a connection.");
+  const cur = S.decFull[id];
+  const body = { move_id: id, decision: cur === decision ? "cleared" : decision, reason: opts.reason || null, confirm_high_value: !!opts.confirm };
+  const post = () => fetch("/api/decisions", { method: "POST", headers: { "Content-Type": "application/json", "X-Client-Id": clientId() }, body: JSON.stringify(body) });
+  try {
+    let r = await post();
+    if (r.status === 409) {
+      const j = await r.json();
+      if (!confirm(((j.detail && j.detail.message) || "This is a high-value move.") + "\n\nApproving records approval of the plan only. No stock is dispatched.")) return;
+      body.confirm_high_value = true; r = await post();
+    }
+    if (!r.ok) { let m = r.statusText; try { const j = await r.json(); m = typeof j.detail === "string" ? j.detail : (j.detail && j.detail.message) || m; } catch { /* */ } throw new Error(m); }
+    const c = (await r.json()).current;
+    if (c) { S.decFull[id] = c.decision; S.dec[id] = c.decision === "rejected" ? "rejected" : "approved"; } else { delete S.decFull[id]; delete S.dec[id]; }
+    S.acts.forEach((a) => { if (a.id === id) a.decision = S.decFull[id] || null; });
+    refreshStatus(); closeDrawer(); render();
+    toast(c ? (c.decision === "rejected" ? "Rejected and recorded." : "Approved and recorded. No stock is dispatched.") : "Decision cleared.");
+  } catch (e) { toast("Could not save: " + e.message); }
+}
+function decisionBar(a) {
+  const cur = S.decFull[a.id], alt = a.review && a.review.alternative;
+  const approve = a.requires_approval ? "Sign off" : "Approve";
+  return `<div class="dbar"><div class="mc-actions">
+    <button data-dec="rejected" class="${cur === "rejected" ? "on-r" : ""}">${ico("x")}Reject</button>
+    <button data-dec="approved" class="${cur === "approved" ? "on-a" : "go"}">${ico("check")}${approve}${alt ? " original" : ""}</button></div>
+    ${alt ? `<div class="mc-actions" style="margin-top:8px"><button data-dec="approved_alternative" class="${cur === "approved_alternative" ? "on-a" : "go"}">${ico("sparkles")}Approve AI alternative</button></div>` : ""}
+    <label class="muted" style="display:block;font-size:12px;margin-top:8px">Reason if rejecting or changing (optional)
+      <select id="dec-reason" style="width:100%;min-height:44px;margin-top:4px;font:inherit;border:1px solid var(--border);background:var(--surface);color:var(--text);border-radius:3px;padding:0 8px"><option value="">No reason</option><option>Quantity too high</option><option>Wrong destination</option><option>Stock needed elsewhere</option><option>Data looks wrong</option><option>Other</option></select></label>
+    <p class="muted" style="font-size:12px;margin:8px 0 0">Approving records approval of this plan only. No stock is dispatched.${a.requires_approval ? " Above the sign-off limit, you will be asked to confirm." : ""}</p></div>`;
+}
+function bindDecisionBar(d, a) {
+  d.querySelectorAll("[data-dec]").forEach((b) => b.addEventListener("click", () => setDecision(a.id, b.dataset.dec, { reason: ($("#dec-reason") || {}).value || null })));
+}
+
+/* ------------------------------------------------------------ AI chips, sections, comparison */
+const AI_LABEL = { CONFIRM: "AI agrees", FLAG: "AI flagged", ALTERNATIVE: "AI alternative", INSUFFICIENT_EVIDENCE: "AI: not enough evidence" };
+const AI_TONE = { CONFIRM: "ok", FLAG: "warn", ALTERNATIVE: "info", INSUFFICIENT_EVIDENCE: "type" };
+function aiChip(a) {
+  if (a.ai_state === "completed") return `<span class="pill ${AI_TONE[a.ai_outcome] || "type"}">${AI_LABEL[a.ai_outcome] || a.ai_outcome}</span>`;
+  if (a.ai_state === "failed") return `<span class="pill error">AI failed</span>`;
+  if (a.ai_state === "pending") return `<span class="pill type">AI pending</span>`;
+  return "";
+}
+const KIND = { alternative_donor: "A different store gives the stock", donor_instead_of_warehouse: "A store with spare stock instead of the warehouse", warehouse_instead_of_store: "Send from the warehouse instead of a store", alternative_destination: "A different destination store" };
+function aiSection(rv) {
+  if (!rv) return `<h3>AI review (advisory)</h3><div class="note">Not reviewed by Qwen3. Only the highest-priority moves are reviewed, and reviews are skipped if the AI server is unavailable. The deterministic checks above still apply.</div>`;
+  if (rv.state === "failed") return `<h3>AI review (advisory)</h3><div class="note">The AI review failed and was discarded: ${esc(rv.error || "unknown error")}</div>`;
+  if (rv.state !== "completed") return `<h3>AI review (advisory)</h3><div class="note">${rv.state === "skipped" ? "Outside the AI review budget for this run." : "AI review pending."}</div>`;
+  const r = rv.review;
+  return `<h3>AI review (advisory)</h3><p style="margin:0 0 6px"><span class="pill ${AI_TONE[rv.outcome]}">${AI_LABEL[rv.outcome]}</span> <span class="muted" style="font-size:12px">model ${esc(rv.model || "")} · stated confidence ${esc(r.confidence)} (not a calibrated probability)</span></p>
+    <div class="say">${esc(r.plain_explanation)}</div>
+    ${r.deterministic_note ? `<div class="note">${esc(r.deterministic_note)}</div>` : ""}
+    <p class="muted" style="font-size:13px;margin:6px 0">${esc(r.reasoning)}</p>
+    ${r.risks.length ? `<b style="font-size:13px">Risks</b><ul class="checks" style="list-style:disc;padding-left:18px">${r.risks.map((x) => `<li style="list-style:disc">${esc(x)}</li>`).join("")}</ul>` : ""}
+    ${r.missing_information.length ? `<b style="font-size:13px">Missing information</b><ul class="checks" style="list-style:disc;padding-left:18px">${r.missing_information.map((x) => `<li style="list-style:disc">${esc(x)}</li>`).join("")}</ul>` : ""}
+    <div style="margin:6px 0">${(r.evidence_refs || []).map((x) => `<span class="pill type" style="text-transform:none">${esc(x)}</span>`).join(" ")}</div>
+    <p class="muted" style="font-size:12px;margin:4px 0">The AI's view is kept separate from the deterministic validator, which every move has already passed.</p>`;
+}
+function altCompare(a, rv) {
+  const c = rv && rv.alternative; if (!c) return "";
+  const m = c.metrics, row = (k, o, n) => `<div class="cmp-row"><div class="cmp-k">${k}</div><div class="cmp-v"><small>Original NODAL</small>${o}</div><div class="cmp-v alt"><small>Qwen3 alternative</small><b>${n}</b></div></div>`;
+  return `<h3>Original vs AI alternative</h3><p class="muted" style="margin:0 0 6px;font-size:13px">${esc(KIND[c.kind] || c.kind)}. Numbers below are calculated by NODAL, not by the AI.</p>
+  <div class="cmp">${row("From", esc(a.source), esc(c.source))}${row("To", esc(a.destination), esc(c.destination))}${row("Units", a.qty, c.qty)}${row("Lead time", a.lead_days + " days", c.lead_days + " days")}
+  ${row("Expected revenue (30 days)", "baseline", (m.delta_expected_revenue >= 0 ? "+" : "−") + inr(Math.abs(m.delta_expected_revenue)))}
+  ${row("Destination cover after", cov(a.cover_after_days), cov(m.dest_cover_after_days))}${row("Source cover after", "—", cov(m.source_cover_after_days))}${row("Hard rules", "Passed", "Passed, re-checked")}</div>
+  <p class="muted" style="font-size:12px;margin:6px 0">${esc(m.note || "")}</p>`;
+}
+
+/* ------------------------------------------------------------ status panel, banners */
+function ago(iso) {
+  const s = (Date.now() - new Date(iso).getTime()) / 1000; if (!isFinite(s)) return "";
+  return s < 90 ? "just now" : s < 5400 ? Math.round(s / 60) + " min ago" : s < 129600 ? Math.round(s / 3600) + " h ago" : Math.round(s / 86400) + " days ago";
+}
+function statusHtml(compact) {
+  const s = S.status; if (!s) return "";
+  const tile = (v, l, sub) => `<div class="card kpi"><div class="v">${v}</div><div class="l">${l}</div>${sub ? `<div class="s">${sub}</div>` : ""}</div>`;
+  const stale = (Date.now() - new Date(s.created_at).getTime()) > 36 * 3600 * 1000;
+  const tiles = compact ? [tile(num(s.awaiting), "Awaiting decision", `${num(s.approved)} approved · ${num(s.rejected)} rejected`), tile(num(s.needs_signoff), "Need sign-off", "above ₹1,00,000"),
+      tile(`${num(s.ai.reviews_completed)}`, "AI reviews", `${num(s.ai.flagged)} flagged · ${num(s.ai.alternatives)} alternatives`), tile(num(s.dq_warnings), "Data warnings", `${s.rules_passed}/${s.rules_total} rules pass`)]
+    : [tile(ago(s.created_at) || "—", "Latest run", `data as of ${esc(s.as_of)} · ${esc(s.automation.last_run_status || "")}`), tile(num(s.moves), "Moves proposed", `${num(s.units)} units · ${lakh(s.value_mrp)}`), tile(num(s.awaiting), "Awaiting decision", `${num(s.approved)} approved · ${num(s.rejected)} rejected`),
+      tile(num(s.needs_signoff), "Need sign-off", "above ₹1,00,000 at MRP"), tile(`${num(s.ai.reviews_completed)}`, "AI reviews done", `${num(s.ai.flagged)} flagged · ${num(s.ai.failed)} failed`), tile(num(s.ai.alternatives), "AI alternatives", "validated by NODAL"),
+      tile(num(s.dq_warnings), "Data warnings", `${s.rules_passed}/${s.rules_total} hard rules pass`), tile(esc(s.automation.last_run_status || "n/a"), "Automation", `daily ${esc(s.automation.schedule)} · AI ${esc(s.automation.ai_status || "n/a")}`)];
+  return `${stale ? `<div class="note">${ico("clock")} This plan is from ${esc(ago(s.created_at))}. A newer daily run has not been published yet.</div>` : ""}
+    <div class="grid kpis" style="margin-bottom:6px">${tiles.join("")}</div>
+    <p class="muted" style="font-size:12px;margin:0 0 14px">Approving records approval of the proposed plan. It does not dispatch any stock.</p>`;
+}
+function netBanner() {
+  let b = $("#net"); if (!b) { b = document.createElement("div"); b.id = "net"; b.setAttribute("role", "status"); document.body.appendChild(b); }
+  const off = !navigator.onLine, st = S.stale;
+  b.textContent = off ? "You are offline. Showing saved data. Approvals need a connection." : st ? "Showing saved data from your last visit." : "";
+  b.classList.toggle("on", off || st);
+}
+window.addEventListener("online", () => { netBanner(); });
+window.addEventListener("offline", netBanner);
+
+/* ------------------------------------------------------------ AI Intelligence / Daily runs / History */
+async function vAI() {
+  $("#main").innerHTML = '<div class="loading">Loading…</div>';
+  const d = await api("/api/ai"), s = S.status || {};
+  const total = (S.acts || []).length, o = d.outcomes;
+  const cards = d.reviews.map((x) => `<article class="mcard" tabindex="0" role="button" data-id="${x.id}"><div class="mc-top"><span class="pill ${x.state === "failed" ? "error" : AI_TONE[x.outcome] || "type"}">${x.state === "failed" ? "AI failed" : AI_LABEL[x.outcome] || x.state}</span><span class="muted">${esc(x.move.type_label)} · ${esc(x.move.urgency)}</span></div>
+    <h3 class="mc-title">${x.move.qty} × ${esc(x.move.sku_id)}</h3><div class="mc-route">${esc(x.move.source)} → ${esc(x.move.destination)} <span>${inr(x.move.value_mrp)}</span></div>
+    <p class="mc-why" style="margin:8px 0 0">${esc(x.review ? x.review.plain_explanation : x.error || "")}</p>${x.alternative ? `<div class="alt-banner" style="margin-top:8px">${ico("sparkles")}<span>Validated alternative available</span></div>` : ""}</article>`).join("");
+  $("#main").innerHTML = `<h1>AI Intelligence</h1><p class="lead">Qwen3 8B runs locally through Ollama and reviews the highest-priority moves. It is advisory: it only sees facts NODAL computed, every number it writes is checked against those facts, and any alternative is re-validated by the independent rule validator before it can be approved.</p>
+    <div class="grid kpis"><div class="card kpi"><div class="v">${num(s.ai ? s.ai.reviews_completed : 0)}</div><div class="l">Reviews completed</div><div class="s">of ${num(total)} moves (prioritised)</div></div>
+    <div class="card kpi"><div class="v">${num(o.FLAG || 0)}</div><div class="l">Flagged</div></div><div class="card kpi"><div class="v">${num(s.ai ? s.ai.alternatives : 0)}</div><div class="l">Alternatives</div><div class="s">${num(d.candidates_evaluated)} candidates evaluated · ${num(d.better_by_calculation)} better by calculation</div></div>
+    <div class="card kpi"><div class="v">${num((d.states.failed || 0) + (d.states.pending || 0))}</div><div class="l">Failed / pending</div><div class="s">${num(d.states.skipped || 0)} outside budget</div></div></div>
+    <div class="note">${esc(d.note)} Model-stated confidence is not a calibrated probability.</div>
+    <h2>Reviewed moves</h2>${cards || '<div class="empty">No AI reviews in this run. Start Ollama and re-run the daily pipeline.</div>'}`;
+  document.querySelectorAll("#main .mcard").forEach((c) => c.addEventListener("click", () => openDrawer(c.dataset.id)));
+}
+async function vRuns() {
+  $("#main").innerHTML = '<div class="loading">Loading…</div>';
+  const runs = await api("/api/runs"), s = S.status || {};
+  const stg = (st) => Object.entries(st || {}).map(([k, v]) => `<span class="pill ${v.status === "completed" ? "ok" : v.status === "failed" ? "error" : "type"}" title="${esc(k)}">${esc(k.replace(/_/g, " "))}${v.seconds ? " " + v.seconds + "s" : ""}</span>`).join(" ");
+  $("#main").innerHTML = `<h1>Daily runs</h1><p class="lead">Each run ingests the datasets, validates them, snapshots them, forecasts, allocates, checks every rule, reviews with Qwen3 and publishes. Identical data is never published twice.</p>
+    <div class="grid cols2"><div class="card"><div class="eyebrow">Automation</div><p style="margin:6px 0 0">Scheduled daily at <b>${esc((s.automation || {}).schedule || "")}</b>. Ingestion: watched folder and operator upload. SFTP, cloud storage and inventory-system APIs are future connectors (not built).</p></div>
+    <div class="card"><div class="eyebrow">Latest</div><p style="margin:6px 0 0">${esc((s.automation || {}).last_run_status || "n/a")} · AI ${esc((s.automation || {}).ai_status || "n/a")} · data as of ${esc(s.as_of || "")}</p></div></div>
+    <h2>History</h2>${runs.map((r) => `<div class="card" style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><b>${esc(r.run_id)}</b><span class="pill ${r.status === "completed" ? "ok" : r.status === "failed" ? "error" : "warn"}">${esc(r.status)}</span></div>
+      <div class="muted" style="font-size:13px">${esc(r.created_at)} · ${esc(r.kind)} · as of ${esc(r.as_of || "—")} · input ${esc((r.input_hash || "").slice(0, 10))}</div>
+      ${r.metrics ? `<div style="margin:6px 0;font-size:13px">${num(r.metrics.moves || 0)} moves · ${num(r.metrics.units || 0)} units${r.metrics.needs_approval !== undefined ? " · " + r.metrics.needs_approval + " need sign-off" : ""} · AI ${esc(r.ai_status)}</div>` : ""}
+      <div style="display:flex;gap:4px;flex-wrap:wrap">${stg(r.stages)}</div>${r.error ? `<div class="note">${esc(r.error)}</div>` : ""}</div>`).join("") || '<div class="empty">No runs recorded.</div>'}`;
+}
+async function vHistory() {
+  $("#main").innerHTML = '<div class="loading">Loading…</div>';
+  const h = await api("/api/history");
+  $("#main").innerHTML = `<h1>History</h1><p class="lead">Every approval and rejection is stored on the server and never edited. ${esc(h.note)}</p>
+    <h2>Decisions</h2>${h.decisions.map((x) => `<div class="card" style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap"><b>${esc(x.move_id)} · ${x.move.qty ?? ""} × ${esc(x.move.sku_id || "")}</b><span class="pill ${x.decision === "rejected" ? "error" : x.decision === "cleared" ? "type" : "ok"}">${esc(x.decision.replace("_", " "))}</span></div>
+      <div class="muted" style="font-size:13px">${esc(x.move.source || "")} → ${esc(x.move.destination || "")} · ${esc(x.actor)} · ${esc(x.ts)}${x.had_ai_alternative ? " · AI alternative was available" : ""}${x.confirmed ? " · high-value confirmed" : ""}</div>${x.reason ? `<div style="font-size:13px">Reason: ${esc(x.reason)}</div>` : ""}</div>`).join("") || '<div class="empty">No decisions yet. Approve or reject a move to start the audit trail.</div>'}
+    <h2>Audit events</h2><div class="card">${h.audit.map((e) => `<div class="rule"><span class="muted" style="width:170px;flex:none">${esc(e.ts)}</span><span>${esc(e.event)}${e.actor ? " · " + esc(e.actor) : ""}</span></div>`).join("") || "<span class='muted'>None.</span>"}</div>
+    <p class="muted" style="font-size:13px">Outcomes recorded so far (actual moves, later sales): ${num(h.outcomes_recorded)}.</p>`;
+}
+
 function openMore() {
   const d = $("#drawer");
-  const row = (icon, label, attr) => `<button class="sheet-row" ${attr}>${ico(icon)}<span>${label}</span></button>`;
+  const row = (icon, label, m) => `<button class="sheet-row" data-m="${m}">${ico(icon)}<span>${label}</span></button>`;
   d.innerHTML = `<button class="btn x" id="dx">${ico("x")}Close</button><h1 style="margin-top:0">More</h1>
-    ${row("database", "Data quality", 'data-m="quality"')}${row("line-chart", "Forecast model", 'data-m="model"')}${row("info", "How it works", 'data-m="method"')}
-    <a class="sheet-row" href="/api/export.csv">${ico("download")}<span>Export all moves (CSV)</span></a>${row("refresh-cw", "Re-run engine", 'data-m="rerun"')}`;
+    ${row("shield-check", "Checks (rules and gaps)", "safety")}${row("calendar-clock", "Daily runs", "runs")}${row("history", "History", "history")}${row("database", "Data quality", "quality")}${row("line-chart", "Forecast model", "model")}${row("info", "How it works", "method")}
+    <a class="sheet-row" href="/api/export.csv">${ico("download")}<span>Export all moves (CSV)</span></a>`;
   d.classList.add("open"); $("#scrim").classList.add("open"); d.setAttribute("aria-hidden", "false");
   $("#dx").onclick = closeDrawer;
-  d.querySelectorAll("[data-m]").forEach((b) => b.addEventListener("click", async () => { closeDrawer(); if (b.dataset.m === "rerun") await boot(true); else setTab(b.dataset.m); }));
+  d.querySelectorAll("[data-m]").forEach((b) => b.addEventListener("click", () => { closeDrawer(); setTab(b.dataset.m); }));
 }
+
+/* ------------------------------------------------------------ PWA */
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => { /* PWA features are optional */ }));
