@@ -1,0 +1,43 @@
+# secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# python
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# node (if any)
+node_modules/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# derived / generated
+nodal-stock-mover/data/*
+!nodal-stock-mover/data/.gitkeep
+*.log
+
+# local Claude settings (project skill + CLAUDE.md remain tracked)
+.claude/settings.local.json
+.claude/worktrees/
+
+# hackathon operator kit + organiser pack: kept locally, not part of the submission
+KIT_README.md
+CLAUDE.md
+PROMPT_CARDS.md
+PITCH_PREP.md
+STOCK_MOVER_DATA_AND_ALGORITHM.md
+solo-hackathon-operator-skill.zip
+checklists/
+templates/
+.claude/
+manyavar-vch3-data/

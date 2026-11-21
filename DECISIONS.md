@@ -1,0 +1,14 @@
+# NODAL — Decision log
+
+| # | Decision | Reason |
+|---|---|---|
+| 1 | Brief B = Stock Mover (PDF is byte-identical to `briefs/B_Stock_Mover_brief.pdf`). Brief A (Store Coach) is out of scope. | Original PDF is authoritative. |
+| 2 | Python monolith: pandas engine + FastAPI + static HTML/JS UI, no database, no build step. | 260k bill lines, auditable deterministic allocator; one command to run and explain. |
+| 3 | No LLM in the decision path; explanations are templated from a structured evidence object. | Brief: organiser spot-checks numbers; quantities must be traceable. |
+| 4 | Velocity = units / **in-stock days** (weekly `days_in_stock` + inference from oldest-unit age); thin evidence shrunk to same-SKU peer rate. | Zero sales ≠ slow product; stock-outs censor demand. |
+| 5 | Festival uplift derived from last year's same-offset window (calendar + sales), applied per state. | No invented multipliers; Diwali is 8 Nov 2026, inside the horizon. |
+| 6 | Pull-back = take stock out of an over-capacity / ageing position, preferring a store that sells it, else back to WH-KOL. **Assumption** — brief does not define destination. | Labelled in UI, configurable in `policy.py`. |
+| 7 | Thresholds not in the data (reorder trigger 14d, target cover 30d, ageing 180d) are ASSUMED, centralised in `policy.py` and shown in the UI; 30-day donor cover and ₹1,00,000 approval limit are read from `rules.csv`. | Brief fixes only these two. |
+| 8 | Independent validator re-derives post-plan state from source tables; violating actions are excluded, not warned. | Brief: "we check that no rule is broken". |
+| 9 | Contradictory data (negative stock) is excluded from all actions, not repaired. | Never silently produce a confident action from bad data. |
+| 10 | Repo contains only the application, docs and tests; the organiser data pack and the personal operator kit are git-ignored. | Judged artefacts only; data belongs to Vedant Fashions. |
