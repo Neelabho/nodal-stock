@@ -30,7 +30,12 @@ def explain(a: dict, seas: dict, stores: pd.DataFrame, H: int) -> str:
     rc = e.get("recipient", {})
     dn = e.get("donor", {})
     fest = ""
-    if rc and rc.get("season_index", 1) > 1.05 and (pd.Timestamp(a["arrival_date"]) - pd.Timestamp(a["dispatch_date"])).days >= 0:
+    if rc and rc.get("forecast_ml") is not None:
+        st = stores.at[dst, "state"] if dst in stores.index else None
+        fx = seas[st] if st else {}
+        tail = f"; {fx['festival']} in {fx['offset_days']}d" if fx.get("festival") and rc["velocity_used"] > 1.05 * max(rc["velocity_trailing"], 1e-9) else ""
+        fest = f" (ML forecast; trailing {rc['velocity_trailing']:.2f}/day{tail})"
+    elif rc and rc.get("season_index", 1) > 1.05:
         st = stores.at[dst, "state"] if dst in stores.index else None
         if st and seas[st]["festival"]:
             fest = f" (incl. ×{rc['season_index']:.2f} {seas[st]['festival']} uplift)"
@@ -133,6 +138,15 @@ def run(data_dir: str) -> dict:
     audit = run_audit(d)
     vel, seas = compute_velocity(d)
     pl = plan(d, vel, seas)
+    opt_cmp = None
+    if d.policy.use_optimizer:
+        import dataclasses
+        d_greedy = dataclasses.replace(d, policy=dataclasses.replace(d.policy, use_optimizer=False))
+        pg = plan(d_greedy, vel, seas)
+        rev_lp, un_lp = pl.expected_revenue(); rev_g, un_g = pg.expected_revenue()
+        opt_cmp = {"method": "LP (HiGHS) maximising expected revenue captured, vs greedy cover-equalising", "expected_revenue_lp": round(rev_lp), "expected_revenue_greedy": round(rev_g),
+                   "expected_units_lp": round(un_lp), "expected_units_greedy": round(un_g), "uplift_pct": round(100 * (rev_lp / max(rev_g, 1) - 1), 2), "lp": pl.lp_stats,
+                   "horizon_days": 30, "note": "expected demand ~ negative binomial from the ML forecast; revenue at MRP; same hard rules for both"}
     acts = finalise(pl, d, seas)
     excluded, rounds = [], 0
     while rounds < 6:
@@ -199,10 +213,19 @@ def run(data_dir: str) -> dict:
         "source_dir": "manyavar-vch3-data/csv", "source_hash": d.source_hash, "file_hashes": d.manifest_files, "policy": pol.as_dict(), "policy_sources": SOURCES, "policy_notes": d.policy_notes,
         "lead_times": {"warehouse_to_store_by_zone": d.lead_wh, "store_to_store": d.lead_s2s}, "seasonality": seas,
         "velocity": {"positions": int(len(vel)), "zero_sales_classification": zc, "confidence": vel.confidence.value_counts().to_dict(),
-                     "method": "units sold in last 84 days / in-stock days (weekly days_in_stock, plus inference from oldest unit age); positions with <42 in-stock days shrunk toward same-SKU peer rate (k=14d); x festival index"},
-        "validator_rounds": rounds,
+                     "method": ("Poisson gradient-boosted forecast of units in the next 28 days per store x SKU (lags, peer aggregates, price, tier, festival/wedding calendar, last-year window); floored by the in-stock trailing rate x festival index where a position was out of stock" if pol.use_ml_forecast else "units sold in last 84 days / in-stock days; thin evidence shrunk toward same-SKU peer rate; x festival index"),
+                     "ml_forecast": bool(pol.use_ml_forecast), "floor_applied": int(vel.floor_applied.sum())},
+        "validator_rounds": rounds, "optimizer": opt_cmp,
     }
     summary["highlights"] = hl
-    return {"manifest": manifest, "audit": audit, "summary": summary, "actions": acts, "validation": final, "excluded": excluded,
+    ledger_in, ledger_out = defaultdict(int), defaultdict(int)
+    for a in acts:
+        ledger_in[(a["destination"], a["sku_id"])] += a["qty"]; ledger_out[(a["source"], a["sku_id"])] += a["qty"]
+    items = d.t["items"].set_index("sku_id")
+    positions = [{"store": p.store, "sku": p.sku, "style": items.at[p.sku, "style_id"], "style_name": items.at[p.sku, "style_name"], "category": items.at[p.sku, "category"], "size": items.at[p.sku, "size"],
+                  "on_hand": p.on_hand, "in_transit": p.in_transit, "daily": float(p.vel_ml if p.vel_ml is not None and not pd.isna(p.vel_ml) else p.vel_eff), "units84": p.units,
+                  "plan_in": ledger_in.get((p.store, p.sku), 0), "plan_out": ledger_out.get((p.store, p.sku), 0)} for p in pl.P.values()]
+    wh = [{"sku": k, "on_hand": int(v), "style": items.at[k, "style_id"], "category": items.at[k, "category"], "plan_out": ledger_out.get((d.warehouse_id, k), 0)} for k, v in pl.wh_total0.items() if k in items.index]
+    return {"positions": positions, "warehouse": wh, "manifest": manifest, "audit": audit, "summary": summary, "actions": acts, "validation": final, "excluded": excluded,
             "blocked_samples": dict(block_samples), "unresolved": unresolved[:400],
             "stores": [{"store_id": i, "city": r.city, "tier": r.tier, "zone": r.zone, "capacity": int(r.stock_capacity_units)} for i, r in stores.iterrows()]}

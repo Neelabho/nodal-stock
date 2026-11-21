@@ -17,6 +17,10 @@ import numpy as np
 import pandas as pd
 
 from .loader import Data
+from . import forecast as _F
+from scipy import stats as _stats
+from scipy.optimize import linprog
+import scipy.sparse as _sp
 
 EPS = 1e-9
 
@@ -43,6 +47,11 @@ class Pos:
     peer_src: str
     obs_vel: float
     protected: bool = False
+    vel_base: float = 0.0
+    vel_ml: float | None = None
+    floor: bool = False
+    fc_lo: float | None = None
+    fc_hi: float | None = None
     excluded: str = ""
     out: int = 0
     inn: int = 0
@@ -75,6 +84,9 @@ class Planner:
         s = snap[snap.location_id != d.warehouse_id].set_index(["location_id", "sku_id"])
         self.wh = snap[snap.location_id == d.warehouse_id].set_index("sku_id").on_hand.clip(lower=0).to_dict()
         self.wh_total0 = dict(self.wh)
+        self.cfg = _F.load_config()
+        self.lp_gain = {}
+        self.lp_stats = None
         self.wh_inbound = defaultdict(list)
         for r in t["warehouse_inbound"].itertuples():
             self.wh_inbound[r.expected_date_dt].append((r.sku_id, int(r.qty), r.status))
@@ -91,7 +103,8 @@ class Planner:
             pos = Pos(st, sku, max(oh, 0), it, int((itd - self.as_of).days) if pd.notna(itd) else 0,
                       float((self.as_of - old).days) if pd.notna(old) and oh > 0 else None,
                       int(r.units), int(r.evidence_days), int(r.avail_days), int(r.elig_days), float(r.vel), float(r.vel_eff), float(r.season),
-                      r.confidence, r.zero_class, bool(r.shrunk), float(r.peer_vel), r.peer_src, float(r.obs_vel))
+                      r.confidence, r.zero_class, bool(r.shrunk), float(r.peer_vel), r.peer_src, float(r.obs_vel),
+                      vel_base=float(r.vel_base), vel_ml=None if pd.isna(r.vel_ml) else float(r.vel_ml), floor=bool(r.floor_applied), fc_lo=None if pd.isna(r.get('fc_lo', np.nan)) else float(r.fc_lo), fc_hi=None if pd.isna(r.get('fc_hi', np.nan)) else float(r.fc_hi))
             if oh < 0:
                 pos.excluded = f"negative on_hand ({oh}) in source data - contradictory, position excluded"
             pos.protected = (st, self.items.at[sku, "style_id"]) in self.prot
@@ -113,7 +126,7 @@ class Planner:
     def _virtual_pos(self, store, sku) -> Pos:
         tier = self.stores.at[store, "tier"]
         pv = self.peer_tier.get((sku, tier), self.peer_all.get(sku, 0.0))
-        S = self.seas[self.stores.at[store, "state"]]["index"]
+        S = 1.0 if self.p.use_ml_forecast else self.seas[self.stores.at[store, "state"]]["index"]
         pos = Pos(store, sku, 0, 0, 0, None, 0, 0, 0, 0, pv, pv * S, S, "low", "no_evidence", True, pv, "same SKU peers (position not stocked here)", 0.0)
         pos.protected = (store, self.items.at[sku, "style_id"]) in self.prot
         self._register(pos)
@@ -147,7 +160,7 @@ class Planner:
         return self.cap[store] - self.store_load[store]
 
     def need(self, pos, day):
-        if pos.excluded or pos.units == 0:
+        if pos.excluded or pos.units == 0 or pos.out > 0:   # a store that gives a SKU away in this plan never also receives it
             return 0
         v = self.veff(pos, day)
         if v <= EPS:
@@ -168,6 +181,8 @@ class Planner:
         avail = pos.on_hand - pos.out
         if avail <= 0:
             return 0
+        if pos.inn > 0:
+            return blk("no_churn", f"{pos.store}/{pos.sku} already receives stock in this plan; it is not also a donor")
         if pos.protected:
             return blk("protected_style", f"{pos.sku} is a top-20 protected style at S++ store {pos.store}")
         if pos.units == 0 and pos.zero_class in ("censored", "no_evidence"):
@@ -239,7 +254,7 @@ class Planner:
     def _pos_snapshot(self, pos, day):
         return {"on_hand": pos.on_hand - pos.out, "in_transit": pos.in_transit, "planned_in": pos.inn, "units_84d": pos.units, "in_stock_days_84d": pos.avail_days,
                 "window_days": pos.elig_days, "velocity_observed": round(pos.obs_vel, 4), "velocity_used": round(pos.vel, 4), "season_index": round(pos.season, 3),
-                "velocity_effective": round(self.veff(pos, day), 4), "confidence": pos.conf, "zero_class": pos.zero_class, "shrunk_to_peer": pos.shrunk,
+                "velocity_effective": round(self.veff(pos, day), 4), "velocity_trailing": round(pos.vel_base, 4), "forecast_ml": None if pos.vel_ml is None else round(pos.vel_ml, 4), "floor_applied": pos.floor, "forecast_28d_p90": None if pos.fc_lo is None else [pos.fc_lo, pos.fc_hi], "confidence": pos.conf, "zero_class": pos.zero_class, "shrunk_to_peer": pos.shrunk,
                 "peer_velocity": round(pos.peer_vel, 4), "peer_source": pos.peer_src, "oldest_unit_age_days": pos.age_days}
 
     # ---------------------------------------------------------------- recipient-side selection
@@ -302,7 +317,76 @@ class Planner:
                        "in-transit units never donated", "receiver within capacity", "arrival = dispatch + lead time"],
         }
 
-    # ---------------------------------------------------------------- warehouse water-filling
+    # ---------------------------------------------------------------- LP optimiser
+    def expected_revenue(self, days=30):
+        """Expected revenue at MRP over the next `days` days given the final planned stock: sum_k P(D >= k) for k <= stock (NegBin demand)."""
+        alpha = self.cfg.get("alpha", 0.05); tot = 0.0; units = 0.0
+        for pos in self.P.values():
+            if pos.excluded or pos.units == 0:
+                continue
+            S = pos.on_hand + pos.in_transit + pos.inn - pos.out
+            if S <= 0:
+                continue
+            mu = max(self.veff(pos, self.dispatch_day + 3) * days, 1e-9)
+            ks = np.arange(1, S + 1)
+            sf = _stats.poisson.sf(ks - 1, mu) if alpha <= 1e-4 else _stats.nbinom.sf(ks - 1, *_F.nb_pmf_params(mu, alpha))
+            tot += float(sf.sum()) * float(self.items.at[pos.sku, "mrp"]); units += float(sf.sum())
+        return tot, units
+
+    def _gain_curve(self, pos, day, K, price):
+        """Expected revenue of the k-th received unit = price x P(demand over the target window >= stock_at_arrival + k), demand ~ NegBin."""
+        mu = max(self.veff(pos, day) * self.p.target_cover_days, 1e-9)
+        s0 = int(math.ceil(self.proj(pos, day) - EPS))
+        alpha = self.cfg.get("alpha", 0.05)
+        ks = np.arange(1, K + 1) + s0
+        if alpha <= 1e-4:
+            sf = _stats.poisson.sf(ks - 1, mu)
+        else:
+            r, p = _F.nb_pmf_params(mu, alpha); sf = _stats.nbinom.sf(ks - 1, r, p)
+        return price * sf
+
+    def _lp_solve(self, supply, dispatch_day):
+        """Global LP over all SKUs: maximise expected revenue captured subject to warehouse stock per SKU and store capacity room.
+        The constraint matrix is a bipartite transportation structure (totally unimodular), so the optimum is integral."""
+        cand = []
+        for sku in sorted(supply):
+            if supply[sku] <= 0:
+                continue
+            price = float(self.items.at[sku, "mrp"])
+            for st in self.by_sku.get(sku, []):
+                pos = self.P[(st, sku)]
+                day = dispatch_day + self.lead_wh(st)
+                n, r = self.need(pos, day), self.room(st)
+                K = min(n, r, supply[sku])
+                if K > 0 and not pos.excluded:
+                    cand.append((st, sku, pos, day, K, self._gain_curve(pos, day, K, price)))
+        if not cand:
+            return {}
+        sku_ix = {s: i for i, s in enumerate(sorted({c[1] for c in cand}))}
+        st_ix = {s: i for i, s in enumerate(sorted({c[0] for c in cand}))}
+        cols_sku, cols_st, gains, owner = [], [], [], []
+        for ci, (st, sku, pos, day, K, g) in enumerate(cand):
+            for k in range(K):
+                cols_sku.append(sku_ix[sku]); cols_st.append(st_ix[st]); gains.append(g[k]); owner.append(ci)
+        nv = len(gains)
+        A = _sp.vstack([_sp.csr_matrix((np.ones(nv), (cols_sku, np.arange(nv))), shape=(len(sku_ix), nv)),
+                        _sp.csr_matrix((np.ones(nv), (cols_st, np.arange(nv))), shape=(len(st_ix), nv))]).tocsr()
+        b = np.array([supply[s] for s in sorted(sku_ix, key=sku_ix.get)] + [max(self.room(s), 0) for s in sorted(st_ix, key=st_ix.get)], float)
+        res = linprog(-np.array(gains), A_ub=A, b_ub=b, bounds=(0, 1), method="highs")
+        if res.status != 0:
+            return None                                   # fall back to the greedy allocator
+        y = np.round(res.x).astype(int)
+        out = defaultdict(dict); exp_gain = defaultdict(float)
+        for j, v in enumerate(y):
+            if v:
+                st, sku = cand[owner[j]][0], cand[owner[j]][1]
+                out[sku][st] = out[sku].get(st, 0) + 1
+                exp_gain[(st, sku)] += gains[j]
+        self.lp_gain.update(exp_gain)
+        self.lp_stats = {"variables": nv, "status": res.message, "objective_expected_revenue": float(-res.fun)}
+        return out
+
+    # ---------------------------------------------------------------- warehouse allocation (LP or greedy water-filling)
     def wh_pass(self, supply: dict, dispatch_day: int, basis: str, reason="under_stocked", sched_note=None):
         order = []
         for sku in sorted(supply):
@@ -316,25 +400,33 @@ class Planner:
                     cs.append(self.cover(pos, day))
             if cs:
                 order.append((min(cs), sku))
+        lp = self._lp_solve(supply, dispatch_day) if self.p.use_optimizer else None
         for _, sku in sorted(order):
             sup = supply[sku]
             heap, got, meta = [], defaultdict(int), {}
-            for st in self.by_sku[sku]:
-                pos = self.P[(st, sku)]
-                day = dispatch_day + self.lead_wh(st)
-                n, r = self.need(pos, day), self.room(st)
-                if n > 0 and r > 0 and not pos.excluded:
-                    meta[st] = (pos, day, n, r)
-                    heapq.heappush(heap, (self.cover(pos, day), -self.veff(pos, day), st))
-            while heap and sup > 0:
-                cv, nv, st = heapq.heappop(heap)
-                pos, day, n, r = meta[st]
-                if got[st] >= min(n, r):
-                    continue
-                got[st] += 1
-                sup -= 1
-                if got[st] < min(n, r):
-                    heapq.heappush(heap, (self.cover(pos, day, got[st]), nv, st))
+            if lp is not None:
+                for st, q in lp.get(sku, {}).items():
+                    pos = self.P[(st, sku)]; day = dispatch_day + self.lead_wh(st)
+                    meta[st] = (pos, day, max(self.need(pos, day), q), max(self.room(st), q))
+                    got[st] = q
+                sup -= sum(got.values())
+            else:
+                for st in self.by_sku[sku]:
+                    pos = self.P[(st, sku)]
+                    day = dispatch_day + self.lead_wh(st)
+                    n, r = self.need(pos, day), self.room(st)
+                    if n > 0 and r > 0 and not pos.excluded:
+                        meta[st] = (pos, day, n, r)
+                        heapq.heappush(heap, (self.cover(pos, day), -self.veff(pos, day), st))
+                while heap and sup > 0:
+                    cv, nv, st = heapq.heappop(heap)
+                    pos, day, n, r = meta[st]
+                    if got[st] >= min(n, r):
+                        continue
+                    got[st] += 1
+                    sup -= 1
+                    if got[st] < min(n, r):
+                        heapq.heappush(heap, (self.cover(pos, day, got[st]), nv, st))
             wh_before = supply[sku]
             tot = sum(got.values())
             for st in sorted(got):
@@ -344,7 +436,8 @@ class Planner:
                                     "projected_stock_at_arrival": _r(self.proj(pos, day)), "need_units": n, "target_cover_days": self.p.target_cover_days,
                                     "capacity_room_before": self.room(st), "capacity": self.cap[st]},
                       "supply": {"warehouse_available_before": wh_before, "warehouse_available_after": wh_before - tot, "competing_stores": len(meta), "shortfall": sum(min(meta[s][2], meta[s][3]) for s in meta) > wh_before,
-                                 "basis": basis, "note": sched_note},
+                                 "basis": basis, "note": sched_note, "method": "LP (HiGHS): maximise expected revenue" if lp is not None else "greedy water-filling",
+                                 "expected_revenue_captured": None if lp is None else round(self.lp_gain.get((st, sku), 0.0))},
                       "checks": ["receiver within capacity", "in-transit counted once as arriving", "warehouse units allocated once", "lead time applied"]}
                 self.commit(self.d.warehouse_id, st, sku, q, "WH_TO_STORE", reason, dispatch_day, ev, supply_basis=basis)
             supply[sku] = sup
@@ -423,7 +516,7 @@ class Planner:
     def _peek_virtual(self, st, s):
         tier = self.stores.at[st, "tier"]
         pv = self.peer_tier.get((s, tier), self.peer_all.get(s, 0.0))
-        S = self.seas[self.stores.at[st, "state"]]["index"]
+        S = 1.0 if self.p.use_ml_forecast else self.seas[self.stores.at[st, "state"]]["index"]
         return Pos(st, s, 0, 0, 0, None, 0, 0, 0, 0, pv, pv * S, S, "low", "no_evidence", True, pv, "same SKU peers (position not stocked here)", 0.0,
                    protected=(st, self.items.at[s, "style_id"]) in self.prot)
 
