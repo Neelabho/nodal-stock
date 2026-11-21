@@ -7,7 +7,7 @@ Explainable, rule-safe daily stock movement plan for Manyavar's Stock Mover brie
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 ./run.sh                                   # http://127.0.0.1:8000
-.venv/bin/python -m pytest -q              # 14 tests on the real data
+.venv/bin/python -m pytest -q              # 21 tests on the real data
 cd backend && ../.venv/bin/python -m nodal.cli   # headless run -> data/actions.csv + data/run_manifest.json
 ```
 
@@ -16,20 +16,22 @@ Missing or malformed files produce an actionable error in the UI. Source files a
 
 ## Workflow in the UI
 
-Overview (what was found) → Action register (filter, sort, inspect evidence, approve/reject, export CSV) →
-Data quality → Rules & gaps (validator results, refused moves, unmet demand) → Method (policy, assumptions, manifest).
+Today/Overview (approval queue; on a phone, one move at a time) → Moves (filter, inspect evidence, approve/reject, export CSV) →
+Hotspot map (per-product demand, cover and planned moves) → Rules & gaps (validator results, refused moves, unmet demand) →
+Data quality → Forecast model (back-test, cold-start, calibration, scorecard) → Method (policy, assumptions, manifest).
+Responsive: bottom tab bar, cards and bottom sheets on phones.
 
 ## Architecture
 
 ```
 CSV → loader (typing, schema checks, lead-time/min-display parsing) → audit
-    → velocity (units ÷ in-stock days, peer shrinkage, festival index)
-    → allocate (one ledger; ageing → display minimum → warehouse water-filling → surplus transfers → pull-backs → scheduled inbound)
+    → forecast (Poisson gradient-boosted demand model, leakage-free, no ID features) + velocity (in-stock floor)
+    → allocate (one ledger; ageing → display minimum → warehouse LP maximising expected revenue → surplus transfers → pull-backs → scheduled inbound)
     → validate (independent re-derivation of post-plan state; violating moves excluded)
     → engine (priority, one-line explanations, summary, run manifest) → FastAPI → static UI
 ```
 
-Python / pandas / FastAPI, no database, no build step, no LLM in the decision path. Business parameters live in
+Python / pandas / scikit-learn / scipy / FastAPI, no database, no build step, no LLM in the decision path. Forecast quality is measured, not claimed: `python -m nodal.cli --backtest` regenerates `docs/FORECAST_BACKTEST.json`. Business parameters live in
 `backend/nodal/policy.py`; values stated by the organiser (30-day donor cover, ₹1,00,000 approval limit, lead times,
 minimum display, capacities, protected styles) are read from the CSVs at run time.
 

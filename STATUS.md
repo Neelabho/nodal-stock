@@ -5,7 +5,7 @@
 ## Sign-off checklist (agreed with the builder)
 | Criterion | State |
 |---|---|
-| Rules pass + tests green | **Done.** Validator 11/11 on the live run, 0 moves excluded. `pytest`: 21 passed (≈80 s). |
+| Rules pass + tests green | **Done.** Validator 11/11 on the live run, 0 moves excluded. `pytest`: 21 passed (≈80 s). Mobile UI (375 px) checked in the browser pane: no horizontal scroll, 44 px touch targets, one-move review flow works; not tried on a physical iPhone. |
 | Planted problems visibly handled | **Done in data, check in UI.** KNP-03 520/250 pulled back to 250; BLR-05 and MZF-01 display breaches filled first; MYS-02 negative stock excluded; protected styles refused. Each has a card on Overview that opens the matching moves. |
 | Public URL works | **Not done.** Runs locally only (`./nodal-stock-mover/run.sh`). Needs a Python host. |
 | Two-minute demo recorded | **Not done.** |
