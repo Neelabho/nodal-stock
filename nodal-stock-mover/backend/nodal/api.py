@@ -268,6 +268,83 @@ def decide_routine(body: RoutineIn, x_client_id: str | None = Header(default=Non
     return _apply_batch(ids, "approved", _actor(x_client_id), body.confirm_high_value, "approved as routine", "routine")
 
 
+# ---------------------------------------------------------------- Add data (local only): upload CSVs, recompute, progress
+_job = {"running": False, "started": None, "result": None}
+_job_lock = threading.Lock()
+
+
+def _local_only(request: Request, token: str | None = None):
+    if MODE == "published":
+        raise HTTPException(403, "Uploads and recalculation are disabled on the public site. Run NODAL on the operator machine to add data.")
+    host = request.client.host if request.client else ""
+    want = os.environ.get("NODAL_ADMIN_TOKEN")
+    if host not in ("127.0.0.1", "::1", "localhost") and not (want and token == want):
+        raise HTTPException(403, "Uploads are only accepted from the machine running NODAL (or with the admin token).")
+
+
+@app.get("/api/inbox")
+def inbox(request: Request):
+    _local_only(request)
+    return {"files": pipeline.inbox_status(), "dataset": pipeline.resolve_dataset()[1], "job": _job}
+
+
+@app.put("/api/inbox/{name}")
+async def inbox_put(name: str, request: Request, x_admin_token: str | None = Header(default=None)):
+    _local_only(request, x_admin_token)
+    base = name[:-4] if name.endswith(".csv") else name
+    body = await request.body()
+    if len(body) > 80_000_000:
+        raise HTTPException(413, "file too large")
+    problems = pipeline.validate_upload(base, body)
+    if problems:
+        raise HTTPException(422, {"file": base, "problems": problems})
+    d = pipeline.inbox_dir(); d.mkdir(parents=True, exist_ok=True)
+    (d / f"{base}.csv").write_bytes(body)
+    db.audit("dataset_uploaded", "operator", name=base, bytes=len(body))
+    return {"saved": f"{base}.csv", "bytes": len(body)}
+
+
+@app.delete("/api/inbox/{name}")
+def inbox_delete(name: str, request: Request):
+    _local_only(request)
+    p = pipeline.inbox_dir() / f"{name}.csv"
+    if p.exists():
+        p.unlink()
+        db.audit("dataset_removed", "operator", name=name)
+    return {"removed": p.name}
+
+
+def _run_job(force: bool, with_ai: bool):
+    try:
+        out = pipeline.daily(force=force, with_ai=with_ai)
+        if out.get("status") in ("completed", "partial"):
+            _load(True)
+        _job["result"] = {k: v for k, v in out.items() if k != "bundle"}
+    except Exception as e:  # noqa: BLE001
+        _job["result"] = {"status": "failed", "error": f"{type(e).__name__}: {e}"[:300]}
+    finally:
+        _job["running"] = False
+
+
+@app.post("/api/pipeline/run")
+def pipeline_run(request: Request, ai: bool = True, force: bool = False):
+    _local_only(request)
+    with _job_lock:
+        if _job["running"]:
+            raise HTTPException(409, "A calculation is already running.")
+        _job.update(running=True, started=db.now(), result=None)
+    threading.Thread(target=_run_job, args=(force, ai), daemon=True).start()
+    return {"started": True}
+
+
+@app.get("/api/pipeline/status")
+def pipeline_status(request: Request):
+    _local_only(request)
+    last = (db.list_runs(1) or [None])[0]
+    return {"running": _job["running"], "started": _job["started"], "result": _job["result"],
+            "run": None if not last else {k: last[k] for k in ("run_id", "status", "stages", "ai_status", "metrics", "error", "created_at")}}
+
+
 class AskIn(BaseModel):
     question: str
 

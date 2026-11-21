@@ -34,20 +34,66 @@ def _complete(d: Path) -> list[str]:
     return [n for n in REQUIRED if not (d / f"{n}.csv").exists()]
 
 
+def overlay_dir(base: Path, inbox: Path, names: list[str]) -> Path:
+    """Partial upload: the supplied dataset with the uploaded files swapped in. Materialised once per content hash (never overwritten)."""
+    h = hashlib.sha256()
+    for n in sorted(names):
+        h.update(n.encode()); h.update((inbox / f"{n}.csv").read_bytes())
+    dst = Path(cfg("NODAL_OVERLAYS", str(APP / "data" / "overlay"))) / h.hexdigest()[:16]
+    if not dst.exists():
+        dst.mkdir(parents=True)
+        for n in REQUIRED:
+            src = inbox / f"{n}.csv" if n in names else base / f"{n}.csv"
+            shutil.copy2(src, dst / f"{n}.csv")
+    return dst
+
+
 def resolve_dataset() -> tuple[Path, str]:
-    """Method 1 (watched folder): newest complete dataset in the inbox (a folder of CSVs, or CSVs dropped in the root);
-    otherwise the configured fallback directory. Returns (dir, source_label)."""
+    """Which dataset the next run uses. (1) a complete dataset in the inbox (folder or root); (2) a partial upload layered over the supplied
+    data (uploaded files win, the rest come from the supplied dataset); (3) the supplied dataset."""
     inbox = inbox_dir()
+    base = Path(cfg("NODAL_DATA_DIR", str(SUPPLIED)))
     cands = []
     if inbox.is_dir():
         for p in [inbox, *[x for x in inbox.iterdir() if x.is_dir()]]:
             if _complete(p):                      # _complete() lists MISSING files: skip incomplete sets
                 continue
             cands.append((max((p / f"{n}.csv").stat().st_mtime for n in REQUIRED), p))
-    if cands:
-        return sorted(cands)[-1][1], "inbox"
-    fb = Path(cfg("NODAL_DATA_DIR", str(SUPPLIED)))
-    return fb, "configured_dir"
+        if cands:
+            return sorted(cands)[-1][1], "inbox"
+        present = [n for n in REQUIRED if (inbox / f"{n}.csv").exists()]
+        if present and not _complete(base):
+            return overlay_dir(base, inbox, present), "uploaded:" + ",".join(sorted(present)) + "+supplied"
+    return base, "configured_dir"
+
+
+def inbox_status() -> list[dict]:
+    inbox, base = inbox_dir(), Path(cfg("NODAL_DATA_DIR", str(SUPPLIED)))
+    out = []
+    for n in REQUIRED:
+        up = inbox / f"{n}.csv"
+        out.append({"name": n, "state": "uploaded" if up.exists() else "supplied", "bytes": up.stat().st_size if up.exists() else (base / f"{n}.csv").stat().st_size if (base / f"{n}.csv").exists() else 0,
+                    "modified": dt.datetime.fromtimestamp(up.stat().st_mtime, dt.timezone.utc).isoformat(timespec="seconds") if up.exists() else None})
+    return out
+
+
+def validate_upload(name: str, body: bytes) -> list[str]:
+    """Problems with an uploaded CSV (empty list = acceptable): readable text, header has every required column."""
+    import csv, io
+    if name not in REQUIRED:
+        return [f"'{name}' is not one of the datasets NODAL uses: {', '.join(sorted(REQUIRED))}"]
+    try:
+        text = body.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return ["file is not UTF-8 text"]
+    rows = list(csv.reader(io.StringIO(text)))
+    if not rows or not rows[0]:
+        return ["file is empty"]
+    missing = [c for c in REQUIRED[name] if c not in rows[0]]
+    probs = [f"missing required column(s): {', '.join(missing)}"] if missing else []
+    if len(rows) < 2:
+        probs.append("file has a header but no data rows")
+    return probs
 
 
 def input_hash(d: Path) -> str:
