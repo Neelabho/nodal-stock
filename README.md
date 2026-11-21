@@ -15,6 +15,8 @@ No LLM is involved in any quantity.
 
 On a phone, use *Share → Add to Home Screen* (iOS) or *Install app* (Android/desktop) to install it. The free host sleeps when idle, so the first load can take about a minute. Approving a plan records the decision only; no stock is dispatched.
 
+**Demo video (1:48, website + phone, Sarvam AI voiceover):** [`demo/nodal-demo.mp4`](demo/nodal-demo.mp4) · script: [`nodal-stock-mover/docs/DEMO_SCRIPT.md`](nodal-stock-mover/docs/DEMO_SCRIPT.md)
+
 ## Run it
 
 Requires Python 3.11+ (3.12 in the public image). The supplied Manyavar data pack is included unmodified under `manyavar-vch3-data/`
