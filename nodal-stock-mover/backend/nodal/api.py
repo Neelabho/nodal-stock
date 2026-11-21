@@ -268,10 +268,44 @@ def decide_routine(body: RoutineIn, x_client_id: str | None = Header(default=Non
     return _apply_batch(ids, "approved", _actor(x_client_id), body.confirm_high_value, "approved as routine", "routine")
 
 
+class AskIn(BaseModel):
+    question: str
+
+
+@app.post("/api/ask")
+def ask(body: AskIn, request: Request, x_client_id: str | None = Header(default=None)):
+    from . import qa
+    _result()
+    cid = _actor(x_client_id) if x_client_id else "ip-" + (request.client.host if request.client else "x")
+    dec = db.current_decisions(_state["run_id"])
+    ships = [{**s, **_ship_status(s, dec)} for s in _state["r"]["shipments"]]
+    s = _state["r"]["summary"]
+    status = {"shipments": len(ships), "units": s["total"]["units"], "needs_signoff": s["needs_approval"], "approved": sum(1 for d in dec.values() if d["decision"] != "rejected"),
+              "awaiting": s["total"]["actions"] - len(dec)}
+    local = None
+    if MODE != "published":
+        from .ai.ollama import OllamaClient
+        local = OllamaClient()
+    try:
+        return qa.answer(body.question, cid, _state["run_id"], _state["r"]["manifest"]["policy"], ships, status, local_client=local)
+    except qa.RateLimited as e:
+        raise HTTPException(429, str(e), headers={"Retry-After": str(e.retry_after)})
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+    except RuntimeError as e:
+        raise HTTPException(503, str(e))
+
+
+@app.get("/api/ask/suggestions")
+def ask_suggestions():
+    from . import qa
+    return qa.SUGGESTIONS
+
+
 @app.get("/api/capabilities")
 def capabilities():
     local = MODE != "published"
-    return {"mode": MODE, "can_upload": local, "can_compute": local, "can_ask": bool(os.environ.get("SARVAM_API_KEY")) or local, "public": not local}
+    return {"mode": MODE, "can_upload": local, "can_compute": local, "can_ask": True, "general_questions": bool(os.environ.get("SARVAM_API_KEY")), "public": not local}
 
 
 @app.get("/api/ai")
